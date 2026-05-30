@@ -1,0 +1,17 @@
+# Rust
+target/
+**/target/
+Cargo.lock
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code transient
+.claude/

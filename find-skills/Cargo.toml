@@ -1,0 +1,21 @@
+[package]
+name = "find-skills"
+version = "0.1.0"
+edition = "2021"
+description = "Find the best Claude Code skill, plugin, agent, or MCP tool for a task"
+license = "MIT"
+
+[[bin]]
+name = "find-skills"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+walkdir = "2.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
