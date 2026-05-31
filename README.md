@@ -60,6 +60,18 @@ The other half of `project-memory`. When you wrap up a session ("ok thanks", "I'
 
 ---
 
+### [`knowledge-bridge/`](./knowledge-bridge) — Unified search across all personal knowledge silos
+
+One SQLite FTS5 index over `project-memory`, Claude session transcripts, `insight-vault`, `nokta-vault`, and `daily-report`. Search everything with one query: `kb search "X"`. The READER half of your personal knowledge system — the previous skills WRITE, this one makes everything queryable.
+
+Ships as **both** a Skill Claude invokes on "what do I know about X" type questions **and** a standalone Rust CLI (`kb`).
+
+**Use when:** you want to recall something across your notes, transcripts, insights, and decisions without remembering which silo it was in.
+
+[Read more →](./knowledge-bridge/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -72,24 +84,28 @@ cp -r skills/find-skills ~/.claude/skills/
 cp -r skills/full-research ~/.claude/skills/
 cp -r skills/insight-vault ~/.claude/skills/
 cp -r skills/project-memory ~/.claude/skills/
+cp -r skills/session-to-vault ~/.claude/skills/
+cp -r skills/knowledge-bridge ~/.claude/skills/
 ```
 
-### Rust CLIs (extra step for `find-skills` and `project-memory`)
+### Rust CLIs (extra step for `find-skills`, `project-memory`, `knowledge-bridge`)
 
-Both skills include a Rust CLI that the skill invokes. Install each after cloning:
+Each skill that ships with a CLI is installed via Cargo:
 
 ```bash
-cd skills/find-skills && cargo install --path .
-cd ../project-memory && cargo install --path .
+cd skills/find-skills    && cargo install --path .
+cd ../project-memory     && cargo install --path .
+cd ../knowledge-bridge   && cargo install --path .
 ```
 
-This puts `find-skills` and `pj` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
+This puts `find-skills`, `pj`, and `kb` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
 
 Verify:
 
 ```bash
 find-skills "tauri desktop app"   # ranked list of matching skills/plugins
 pj which                          # current project's resolved memory file
+kb status                         # unified knowledge index stats
 ```
 
 ## Requirements
@@ -100,6 +116,8 @@ pj which                          # current project's resolved memory file
 | `full-research` | Claude Code with `Workflow` tool access. Strongly benefits from `startup-business-analyst`, `deep-research`, and `cookiy` plugins installed. |
 | `insight-vault` | Python 3 with `sqlite3` FTS5 (stdlib). No third-party packages. |
 | `project-memory` | Rust 1.70+ (for the `pj` CLI), Bash |
+| `session-to-vault` | Requires `project-memory` installed. Optionally uses `insight-vault` if present. |
+| `knowledge-bridge` | Rust 1.70+ (for the `kb` CLI), Bash. SQLite is bundled. |
 
 ## Design principles
 
