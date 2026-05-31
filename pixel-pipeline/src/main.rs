@@ -264,6 +264,28 @@ enum Cmd {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
+    /// Crop a rectangle out of an image (great for extracting one sprite from a generated sheet)
+    Crop {
+        input: PathBuf,
+        /// Rectangle as "X,Y,W,H"
+        #[arg(long)]
+        rect: String,
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+    /// Auto-detect non-transparent connected regions in a bg-removed image and save each as its own sprite
+    Extract {
+        input: PathBuf,
+        /// Minimum bounding-box size (px) to count as a sprite — filters out noise
+        #[arg(long, default_value_t = 32)]
+        min_size: u32,
+        /// Pixels of padding around each extracted sprite
+        #[arg(long, default_value_t = 8)]
+        padding: u32,
+        /// Output directory (defaults to <stem>-sprites/)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
     /// Recolor a sprite by swapping colors (e.g. red knight from a silver one)
     Recolor {
         input: PathBuf,
@@ -682,6 +704,10 @@ fn main() {
         }
         Cmd::Recolor { input, swap, tolerance, output } => {
             cmd_recolor(&input, &swap, tolerance, output.as_deref())
+        }
+        Cmd::Crop { input, rect, output } => cmd_crop(&input, &rect, output.as_deref()),
+        Cmd::Extract { input, min_size, padding, output } => {
+            cmd_extract(&input, min_size, padding, output.as_deref())
         }
         Cmd::Server { port, gallery } => cmd_server(port, gallery.as_deref()),
     }
@@ -1321,6 +1347,155 @@ fn cmd_outline(input: &Path, color_hex: &str, thickness: u32, inside: bool, outp
         std::process::exit(1);
     }
     println!("wrote {} ({}px {} outline #{})", out_path.display(), thickness, if inside { "inside" } else { "outside" }, color_hex.trim_start_matches('#'));
+}
+
+fn cmd_crop(input: &Path, rect_str: &str, output: Option<&Path>) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let nums: Vec<u32> = rect_str
+        .split(',')
+        .map(|s| s.trim().parse::<u32>().unwrap_or(0))
+        .collect();
+    if nums.len() != 4 {
+        eprintln!("--rect must be 'X,Y,W,H' (got {} values)", nums.len());
+        std::process::exit(2);
+    }
+    let (x, y, rw, rh) = (nums[0], nums[1], nums[2], nums[3]);
+    let x_end = (x + rw).min(w);
+    let y_end = (y + rh).min(h);
+    if x >= w || y >= h || x_end <= x || y_end <= y {
+        eprintln!("rect is outside image bounds ({}x{})", w, h);
+        std::process::exit(2);
+    }
+    let out_w = x_end - x;
+    let out_h = y_end - y;
+    let mut out = RgbaImage::new(out_w, out_h);
+    for yy in 0..out_h {
+        for xx in 0..out_w {
+            out.put_pixel(xx, yy, *img.get_pixel(x + xx, y + yy));
+        }
+    }
+    let out_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let stem = input
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let parent = input.parent().unwrap_or_else(|| Path::new("."));
+        parent.join(format!("{}-crop.png", stem))
+    });
+    if let Err(e) = out.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({}x{})", out_path.display(), out_w, out_h);
+}
+
+/// Find connected non-transparent regions and save each as a tightly-cropped sprite.
+/// Assumes the input was bg-removed (transparent background).
+fn cmd_extract(input: &Path, min_size: u32, padding: u32, output: Option<&Path>) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+
+    // Flood-fill labelling of opaque connected components
+    let mut labels: Vec<i32> = vec![-1; (w * h) as usize];
+    let mut next_label: i32 = 0;
+    // Per-label bounding box (xmin, ymin, xmax, ymax)
+    let mut bboxes: Vec<(u32, u32, u32, u32)> = Vec::new();
+
+    let idx = |x: u32, y: u32| (y * w + x) as usize;
+    let is_opaque = |x: u32, y: u32| img.get_pixel(x, y).0[3] > 0;
+
+    for y in 0..h {
+        for x in 0..w {
+            if labels[idx(x, y)] != -1 || !is_opaque(x, y) {
+                continue;
+            }
+            // BFS
+            let label = next_label;
+            next_label += 1;
+            let mut bbox = (x, y, x, y);
+            let mut stack: Vec<(u32, u32)> = vec![(x, y)];
+            while let Some((cx, cy)) = stack.pop() {
+                let i = idx(cx, cy);
+                if labels[i] != -1 || !is_opaque(cx, cy) {
+                    continue;
+                }
+                labels[i] = label;
+                if cx < bbox.0 { bbox.0 = cx; }
+                if cy < bbox.1 { bbox.1 = cy; }
+                if cx > bbox.2 { bbox.2 = cx; }
+                if cy > bbox.3 { bbox.3 = cy; }
+                if cx > 0 { stack.push((cx - 1, cy)); }
+                if cx + 1 < w { stack.push((cx + 1, cy)); }
+                if cy > 0 { stack.push((cx, cy - 1)); }
+                if cy + 1 < h { stack.push((cx, cy + 1)); }
+            }
+            bboxes.push(bbox);
+        }
+    }
+
+    // Filter by min size
+    let qualified: Vec<(usize, (u32, u32, u32, u32))> = bboxes
+        .iter()
+        .enumerate()
+        .filter(|(_, (xmin, ymin, xmax, ymax))| {
+            let bw = xmax - xmin + 1;
+            let bh = ymax - ymin + 1;
+            bw >= min_size && bh >= min_size
+        })
+        .map(|(i, bb)| (i, *bb))
+        .collect();
+
+    if qualified.is_empty() {
+        eprintln!("no connected regions ≥ {}px found. Did you bg-remove first?", min_size);
+        std::process::exit(1);
+    }
+
+    let out_dir = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let stem = input
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let parent = input.parent().unwrap_or_else(|| Path::new("."));
+        parent.join(format!("{}-sprites", stem))
+    });
+    fs::create_dir_all(&out_dir).expect("create out dir");
+
+    for (i, (_idx, bbox)) in qualified.iter().enumerate() {
+        let (xmin_raw, ymin_raw, xmax_raw, ymax_raw) = *bbox;
+        let xmin = xmin_raw.saturating_sub(padding);
+        let ymin = ymin_raw.saturating_sub(padding);
+        let xmax = (xmax_raw + padding).min(w - 1);
+        let ymax = (ymax_raw + padding).min(h - 1);
+        let sw = xmax - xmin + 1;
+        let sh = ymax - ymin + 1;
+        let mut sprite = RgbaImage::new(sw, sh);
+        for yy in 0..sh {
+            for xx in 0..sw {
+                sprite.put_pixel(xx, yy, *img.get_pixel(xmin + xx, ymin + yy));
+            }
+        }
+        let path = out_dir.join(format!("sprite-{:02}.png", i + 1));
+        if let Err(e) = sprite.save(&path) {
+            eprintln!("save {}: {}", path.display(), e);
+            continue;
+        }
+        println!("wrote {} ({}x{})", path.display(), sw, sh);
+    }
+    eprintln!();
+    eprintln!("extracted {} sprite(s) to {}/", qualified.len(), out_dir.display());
 }
 
 fn cmd_recolor(input: &Path, swap_str: &str, tolerance: u32, output: Option<&Path>) {
