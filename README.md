@@ -28,6 +28,28 @@ Originally built for market research (sizing / competitive / customer / trends),
 
 ---
 
+### [`insight-vault/`](./insight-vault) — Personal knowledge library (capture / retrieve / evaluate)
+
+Turns text, files, URLs, or research output into atomic, provenance-backed insight files, keeps a rebuildable SQLite FTS5 index over them, and evaluates positions against your own library (supports / contradicts / qualifies + knowledge gaps). Stdlib-only Python engine bundled with the skill — no third-party packages.
+
+**Use when:** the user wants to save/recall an insight, ask "what do I know about X", or pressure-test a decision against their accumulated knowledge.
+
+[Read more →](./insight-vault/SKILL.md)
+
+---
+
+### [`project-memory/`](./project-memory) — Per-project context that survives across sessions
+
+Stores per-project memory (stack, current focus, recent decisions, conventions, gotchas, session log) at `~/.claude/project-memory/<slug>.md`. Auto-detects the project from cwd (git repo or basename), loads at session start, appends decisions and end-of-session summaries back.
+
+Ships as **both** a Skill Claude invokes at the start of any project-scoped session **and** a standalone Rust CLI (`pj`) you can use directly in your terminal.
+
+**Use when:** you run many projects and are tired of re-explaining each one's context at the start of every Claude session.
+
+[Read more →](./project-memory/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -38,26 +60,27 @@ Each skill is self-contained. Copy the directory to `~/.claude/skills/`:
 git clone https://github.com/emreozogul/skills.git
 cp -r skills/find-skills ~/.claude/skills/
 cp -r skills/full-research ~/.claude/skills/
+cp -r skills/insight-vault ~/.claude/skills/
+cp -r skills/project-memory ~/.claude/skills/
 ```
 
-### `find-skills` CLI (extra step)
+### Rust CLIs (extra step for `find-skills` and `project-memory`)
 
-`find-skills` includes a Rust CLI that the skill invokes. Install it after cloning:
+Both skills include a Rust CLI that the skill invokes. Install each after cloning:
 
 ```bash
-cd skills/find-skills
-cargo install --path .
+cd skills/find-skills && cargo install --path .
+cd ../project-memory && cargo install --path .
 ```
 
-This puts the `find-skills` binary in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
+This puts `find-skills` and `pj` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
 
 Verify:
 
 ```bash
-find-skills "tauri desktop app"
+find-skills "tauri desktop app"   # ranked list of matching skills/plugins
+pj which                          # current project's resolved memory file
 ```
-
-You should see a ranked list of matching skills/plugins from your installed marketplaces.
 
 ## Requirements
 
@@ -65,6 +88,8 @@ You should see a ranked list of matching skills/plugins from your installed mark
 |---|---|
 | `find-skills` | Rust 1.70+ (for the CLI), Bash |
 | `full-research` | Claude Code with `Workflow` tool access. Strongly benefits from `startup-business-analyst`, `deep-research`, and `cookiy` plugins installed. |
+| `insight-vault` | Python 3 with `sqlite3` FTS5 (stdlib). No third-party packages. |
+| `project-memory` | Rust 1.70+ (for the `pj` CLI), Bash |
 
 ## Design principles
 

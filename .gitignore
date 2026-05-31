@@ -3,6 +3,11 @@ target/
 **/target/
 Cargo.lock
 
+# Python (bundled engines)
+__pycache__/
+*.pyc
+**/index/insights.db
+
 # Editor
 .vscode/
 .idea/
