@@ -72,6 +72,18 @@ Ships as **both** a Skill Claude invokes on "what do I know about X" type questi
 
 ---
 
+### [`founder-pulse/`](./founder-pulse) — Cross-project daily briefing
+
+Scans every project under `~/Desktop/claude` (or your chosen root) and reports git activity, uncommitted work, TODO counts, and project-memory status — in one table. Combines with `pj` and `kb` for a narrative "morning brief" that catches stale projects, growing tech debt, and forgotten branches.
+
+Ships as **both** a Skill Claude invokes on "what's on my plate today" / "morning brief" / "where am I at" **and** a standalone Rust CLI (`pulse`).
+
+**Use when:** you run many projects in parallel and need a daily X-ray to make sure nothing falls through the cracks.
+
+[Read more →](./founder-pulse/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -86,9 +98,10 @@ cp -r skills/insight-vault ~/.claude/skills/
 cp -r skills/project-memory ~/.claude/skills/
 cp -r skills/session-to-vault ~/.claude/skills/
 cp -r skills/knowledge-bridge ~/.claude/skills/
+cp -r skills/founder-pulse ~/.claude/skills/
 ```
 
-### Rust CLIs (extra step for `find-skills`, `project-memory`, `knowledge-bridge`)
+### Rust CLIs (extra step for `find-skills`, `project-memory`, `knowledge-bridge`, `founder-pulse`)
 
 Each skill that ships with a CLI is installed via Cargo:
 
@@ -96,9 +109,10 @@ Each skill that ships with a CLI is installed via Cargo:
 cd skills/find-skills    && cargo install --path .
 cd ../project-memory     && cargo install --path .
 cd ../knowledge-bridge   && cargo install --path .
+cd ../founder-pulse      && cargo install --path .
 ```
 
-This puts `find-skills`, `pj`, and `kb` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
+This puts `find-skills`, `pj`, `kb`, and `pulse` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
 
 Verify:
 
@@ -106,6 +120,7 @@ Verify:
 find-skills "tauri desktop app"   # ranked list of matching skills/plugins
 pj which                          # current project's resolved memory file
 kb status                         # unified knowledge index stats
+pulse                             # cross-project morning briefing
 ```
 
 ## Requirements
@@ -118,6 +133,7 @@ kb status                         # unified knowledge index stats
 | `project-memory` | Rust 1.70+ (for the `pj` CLI), Bash |
 | `session-to-vault` | Requires `project-memory` installed. Optionally uses `insight-vault` if present. |
 | `knowledge-bridge` | Rust 1.70+ (for the `kb` CLI), Bash. SQLite is bundled. |
+| `founder-pulse` | Rust 1.70+ (for the `pulse` CLI), `git` in PATH. |
 
 ## Design principles
 
