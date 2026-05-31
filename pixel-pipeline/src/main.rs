@@ -119,8 +119,8 @@ enum Cmd {
         /// After generating, run `process` to downscale + palette-snap to project config
         #[arg(long)]
         pixelify: bool,
-        /// ComfyUI base URL
-        #[arg(long, default_value = "http://localhost:8188")]
+        /// ComfyUI base URL. Empty = auto-detect (tries 8000 then 8188).
+        #[arg(long, default_value = "")]
         host: String,
     },
 }
@@ -722,13 +722,30 @@ fn cmd_gen(
     pixelify: bool,
     host: &str,
 ) {
-    if !comfyui_running(host) {
-        eprintln!(
-            "ComfyUI not reachable at {}.\n  Start it: open /Applications/ComfyUI.app\n  Or pass --host <url> if running elsewhere.",
-            host
-        );
-        std::process::exit(1);
-    }
+    // Resolve host: if empty, auto-detect across common ports.
+    let resolved_host = if host.is_empty() {
+        let candidates = ["http://localhost:8000", "http://localhost:8188"];
+        match candidates.iter().find(|c| comfyui_running(c)) {
+            Some(h) => h.to_string(),
+            None => {
+                eprintln!(
+                    "ComfyUI not reachable on :8000 (Desktop) or :8188 (standalone).\n  Start it: open /Applications/ComfyUI.app\n  Or pass --host <url> if running elsewhere."
+                );
+                std::process::exit(1);
+            }
+        }
+    } else {
+        if !comfyui_running(host) {
+            eprintln!(
+                "ComfyUI not reachable at {}.\n  Start it: open /Applications/ComfyUI.app\n  Or pass --host <url> if running elsewhere.",
+                host
+            );
+            std::process::exit(1);
+        }
+        host.to_string()
+    };
+    let host = resolved_host.as_str();
+    eprintln!("Using ComfyUI at {}", host);
 
     // Load workflow template
     let template_path = workflow_path
@@ -819,8 +836,22 @@ fn cmd_gen(
         }
     };
 
-    // ComfyUI validation errors are returned with "error" or "node_errors" keys
-    if let Some(error) = parsed.get("error").or_else(|| parsed.get("node_errors")) {
+    // ComfyUI returns node_errors and error fields that may be empty objects/null on success.
+    // Only treat them as failure when they are non-empty.
+    let is_nonempty = |v: &serde_json::Value| -> bool {
+        match v {
+            serde_json::Value::Null => false,
+            serde_json::Value::String(s) => !s.is_empty(),
+            serde_json::Value::Object(m) => !m.is_empty(),
+            serde_json::Value::Array(a) => !a.is_empty(),
+            _ => true,
+        }
+    };
+    let real_error = parsed
+        .get("error")
+        .filter(|v| is_nonempty(v))
+        .or_else(|| parsed.get("node_errors").filter(|v| is_nonempty(v)));
+    if let Some(error) = real_error {
         eprintln!("ComfyUI rejected the workflow:\n{}", serde_json::to_string_pretty(error).unwrap_or_default());
         eprintln!("\nCommon causes:");
         eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", model);
