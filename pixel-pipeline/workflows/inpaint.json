@@ -1,0 +1,40 @@
+{
+  "_meta": {
+    "name": "inpaint",
+    "description": "Edit a region of an existing sprite using a mask. White (or transparent) in the mask = area to regenerate. Black = preserve. Use to fix a wrong weapon, swap a hat, redo a face, without re-rolling the whole sprite.",
+    "params": {
+      "prompt":   { "node": "6",  "input": "text" },
+      "negative": { "node": "7",  "input": "text" },
+      "seed":     { "node": "3",  "input": "seed" },
+      "steps":    { "node": "3",  "input": "steps" },
+      "cfg":      { "node": "3",  "input": "cfg" },
+      "denoise":  { "node": "3",  "input": "denoise" },
+      "model":    { "node": "4",  "input": "ckpt_name" },
+      "lora":     { "node": "10", "input": "lora_name" },
+      "image":    { "node": "11", "input": "image" },
+      "mask":     { "node": "13", "input": "image" }
+    },
+    "requires_image": true,
+    "requires_mask": true,
+    "defaults": { "denoise": 1.0, "steps": 25, "cfg": 7.5 }
+  },
+  "3": {
+    "inputs": {
+      "seed": 42, "steps": 25, "cfg": 7.5,
+      "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+      "model": ["10", 0], "positive": ["6", 0], "negative": ["7", 0],
+      "latent_image": ["12", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "4": { "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }, "class_type": "CheckpointLoaderSimple" },
+  "6": { "inputs": { "text": "pixel art, retro 16-bit, clean linework, vibrant palette, no anti-aliasing", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "7": { "inputs": { "text": "blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, jpeg artifacts, watermark", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "8": { "inputs": { "samples": ["3", 0], "vae": ["4", 2] }, "class_type": "VAEDecode" },
+  "9": { "inputs": { "filename_prefix": "pix-inpaint", "images": ["8", 0] }, "class_type": "SaveImage" },
+  "10": { "inputs": { "lora_name": "pixel-art-xl-v1.1.safetensors", "strength_model": 1.0, "strength_clip": 1.0, "model": ["4", 0], "clip": ["4", 1] }, "class_type": "LoraLoader" },
+  "11": { "inputs": { "image": "PLACEHOLDER.png", "upload": "image" }, "class_type": "LoadImage" },
+  "12": { "inputs": { "pixels": ["11", 0], "vae": ["4", 2], "mask": ["14", 0], "grow_mask_by": 6 }, "class_type": "VAEEncodeForInpaint" },
+  "13": { "inputs": { "image": "PLACEHOLDER_MASK.png", "upload": "image" }, "class_type": "LoadImage" },
+  "14": { "inputs": { "image": ["13", 0], "channel": "red" }, "class_type": "ImageToMask" }
+}

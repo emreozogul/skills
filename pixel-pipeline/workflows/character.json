@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "name": "character",
+    "description": "txt2img — generate a new sprite from a prompt. SDXL Base + Pixel Art XL LoRA. Default 1024x1024; pipelify to your target scale.",
+    "params": {
+      "prompt":   { "node": "6",  "input": "text" },
+      "negative": { "node": "7",  "input": "text" },
+      "seed":     { "node": "3",  "input": "seed" },
+      "steps":    { "node": "3",  "input": "steps" },
+      "cfg":      { "node": "3",  "input": "cfg" },
+      "width":    { "node": "5",  "input": "width" },
+      "height":   { "node": "5",  "input": "height" },
+      "model":    { "node": "4",  "input": "ckpt_name" },
+      "lora":     { "node": "10", "input": "lora_name" }
+    },
+    "defaults": { "size": "1024x1024", "steps": 25, "cfg": 7.5 }
+  },
+  "3": {
+    "inputs": {
+      "seed": 42, "steps": 25, "cfg": 7.5,
+      "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+      "model": ["10", 0], "positive": ["6", 0], "negative": ["7", 0],
+      "latent_image": ["5", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "4": { "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }, "class_type": "CheckpointLoaderSimple" },
+  "5": { "inputs": { "width": 1024, "height": 1024, "batch_size": 1 }, "class_type": "EmptyLatentImage" },
+  "6": { "inputs": { "text": "pixel art, retro 16-bit, clean linework, vibrant palette, white background, no anti-aliasing", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "7": { "inputs": { "text": "blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, jpeg artifacts, watermark", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "8": { "inputs": { "samples": ["3", 0], "vae": ["4", 2] }, "class_type": "VAEDecode" },
+  "9": { "inputs": { "filename_prefix": "pix", "images": ["8", 0] }, "class_type": "SaveImage" },
+  "10": { "inputs": { "lora_name": "pixel-art-xl-v1.1.safetensors", "strength_model": 1.0, "strength_clip": 1.0, "model": ["4", 0], "clip": ["4", 1] }, "class_type": "LoraLoader" }
+}

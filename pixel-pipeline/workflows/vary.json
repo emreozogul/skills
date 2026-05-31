@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "name": "vary",
+    "description": "img2img — refine or vary an existing sprite. Lower denoise (0.3-0.6) preserves the source's structure; higher (0.7+) re-rolls more aggressively. Use to generate animation-frame variants, color variations, or to clean up a sketched draft.",
+    "params": {
+      "prompt":   { "node": "6",  "input": "text" },
+      "negative": { "node": "7",  "input": "text" },
+      "seed":     { "node": "3",  "input": "seed" },
+      "steps":    { "node": "3",  "input": "steps" },
+      "cfg":      { "node": "3",  "input": "cfg" },
+      "denoise":  { "node": "3",  "input": "denoise" },
+      "model":    { "node": "4",  "input": "ckpt_name" },
+      "lora":     { "node": "10", "input": "lora_name" },
+      "image":    { "node": "11", "input": "image" }
+    },
+    "requires_image": true,
+    "defaults": { "denoise": 0.5, "steps": 25, "cfg": 7.5 }
+  },
+  "3": {
+    "inputs": {
+      "seed": 42, "steps": 25, "cfg": 7.5,
+      "sampler_name": "euler", "scheduler": "normal", "denoise": 0.5,
+      "model": ["10", 0], "positive": ["6", 0], "negative": ["7", 0],
+      "latent_image": ["12", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "4": { "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }, "class_type": "CheckpointLoaderSimple" },
+  "6": { "inputs": { "text": "pixel art, retro 16-bit, clean linework, vibrant palette, no anti-aliasing", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "7": { "inputs": { "text": "blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, jpeg artifacts, watermark", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "8": { "inputs": { "samples": ["3", 0], "vae": ["4", 2] }, "class_type": "VAEDecode" },
+  "9": { "inputs": { "filename_prefix": "pix-vary", "images": ["8", 0] }, "class_type": "SaveImage" },
+  "10": { "inputs": { "lora_name": "pixel-art-xl-v1.1.safetensors", "strength_model": 1.0, "strength_clip": 1.0, "model": ["4", 0], "clip": ["4", 1] }, "class_type": "LoraLoader" },
+  "11": { "inputs": { "image": "PLACEHOLDER.png", "upload": "image" }, "class_type": "LoadImage" },
+  "12": { "inputs": { "pixels": ["11", 0], "vae": ["4", 2] }, "class_type": "VAEEncode" }
+}

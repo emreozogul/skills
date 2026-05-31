@@ -85,35 +85,47 @@ enum Cmd {
         #[arg(long, short, default_value = "spritesheet.png")]
         output: PathBuf,
     },
-    /// Generate an image via local ComfyUI (localhost:8188) using the SDXL pixel-art workflow
+    /// Generate an image via local ComfyUI using a bundled or custom workflow
     Gen {
         /// Positive prompt
         prompt: String,
+        /// Pipeline name (`character` | `vary` | `inpaint`). See `pix pipelines`.
+        #[arg(long, default_value = "character")]
+        pipeline: String,
         /// Negative prompt (overrides default)
         #[arg(long)]
         negative: Option<String>,
-        /// Workflow template path (defaults to bundled sdxl-pixel-art.json)
+        /// Custom workflow JSON path (overrides --pipeline)
         #[arg(long)]
         workflow: Option<PathBuf>,
         /// Checkpoint name (must exist in ComfyUI/models/checkpoints/)
         #[arg(long, default_value = "sd_xl_base_1.0.safetensors")]
         model: String,
-        /// LoRA name (must exist in ComfyUI/models/loras/). Pass "none" to disable.
+        /// LoRA name (must exist in ComfyUI/models/loras/). Pass "none" to disable when supported.
         #[arg(long, default_value = "pixel-art-xl-v1.1.safetensors")]
         lora: String,
-        /// Generation size, e.g. "1024x1024" or just "1024"
-        #[arg(long, default_value = "1024x1024")]
-        size: String,
+        /// Generation size, e.g. "1024x1024" or "1024". Ignored by pipelines that derive size from --from.
+        #[arg(long)]
+        size: Option<String>,
         /// Sampler steps
-        #[arg(long, default_value_t = 25)]
-        steps: u32,
+        #[arg(long)]
+        steps: Option<u32>,
         /// CFG scale
-        #[arg(long, default_value_t = 7.5)]
-        cfg: f32,
+        #[arg(long)]
+        cfg: Option<f32>,
+        /// Denoise strength (img2img / inpaint). 0.3-0.6 preserves source; 0.7+ re-rolls more.
+        #[arg(long)]
+        denoise: Option<f32>,
         /// Seed (omit for random)
         #[arg(long)]
         seed: Option<u64>,
-        /// Output PNG path (defaults to ./pix-gen-<seed>.png)
+        /// Input image (required by `vary` and `inpaint`)
+        #[arg(long)]
+        from: Option<PathBuf>,
+        /// Mask image (required by `inpaint`). White = regenerate, black = preserve.
+        #[arg(long)]
+        mask: Option<PathBuf>,
+        /// Output PNG path (defaults to ./pix-<pipeline>-<seed>.png)
         #[arg(long, short)]
         output: Option<PathBuf>,
         /// After generating, run `process` to downscale + palette-snap to project config
@@ -122,6 +134,19 @@ enum Cmd {
         /// ComfyUI base URL. Empty = auto-detect (tries 8000 then 8188).
         #[arg(long, default_value = "")]
         host: String,
+    },
+    /// List bundled ComfyUI pipelines that `pix gen --pipeline` can use
+    Pipelines,
+    /// Make a black PNG mask the same size as <input> with a white rectangle. For `pix gen --pipeline inpaint --mask`.
+    Mask {
+        /// Reference image (mask matches its size)
+        input: PathBuf,
+        /// Rectangle as X,Y,W,H (px) — area to mark white (= regenerate). Or "X,Y,W,H,..." for multiple rects.
+        #[arg(long)]
+        rect: String,
+        /// Output mask PNG
+        #[arg(long, short, default_value = "mask.png")]
+        output: PathBuf,
     },
 }
 
@@ -266,6 +291,7 @@ fn main() {
         Cmd::Pack { dir, cell, cols, output } => cmd_pack(&dir, cell.as_deref(), cols, &output),
         Cmd::Gen {
             prompt,
+            pipeline,
             negative,
             workflow,
             model,
@@ -273,25 +299,92 @@ fn main() {
             size,
             steps,
             cfg,
+            denoise,
             seed,
+            from,
+            mask,
             output,
             pixelify,
             host,
-        } => cmd_gen(
-            &prompt,
-            negative.as_deref(),
-            workflow.as_deref(),
-            &model,
-            &lora,
-            &size,
+        } => cmd_gen(GenArgs {
+            prompt: &prompt,
+            pipeline: &pipeline,
+            negative: negative.as_deref(),
+            workflow: workflow.as_deref(),
+            model: &model,
+            lora: &lora,
+            size: size.as_deref(),
             steps,
             cfg,
+            denoise,
             seed,
-            output.as_deref(),
+            from: from.as_deref(),
+            mask: mask.as_deref(),
+            output: output.as_deref(),
             pixelify,
-            &host,
-        ),
+            host: &host,
+        }),
+        Cmd::Pipelines => cmd_pipelines(),
+        Cmd::Mask { input, rect, output } => cmd_mask(&input, &rect, &output),
     }
+}
+
+fn cmd_mask(input: &Path, rect_str: &str, output: &Path) {
+    let img = match image::open(input) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let mut mask = RgbaImage::from_pixel(w, h, Rgba([0, 0, 0, 255]));
+
+    // Parse rects: comma-separated quads of u32 (X,Y,W,H repeated)
+    let nums: Vec<u32> = rect_str
+        .split(',')
+        .map(|s| s.trim().parse::<u32>().unwrap_or(0))
+        .collect();
+    if nums.len() % 4 != 0 || nums.is_empty() {
+        eprintln!("--rect must be one or more 'X,Y,W,H' quads (got {} values)", nums.len());
+        std::process::exit(2);
+    }
+
+    for quad in nums.chunks(4) {
+        let (rx, ry, rw, rh) = (quad[0], quad[1], quad[2], quad[3]);
+        let x_end = (rx + rw).min(w);
+        let y_end = (ry + rh).min(h);
+        for y in ry..y_end {
+            for x in rx..x_end {
+                mask.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+            }
+        }
+    }
+
+    if let Err(e) = mask.save(output) {
+        eprintln!("save mask {}: {}", output.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({}x{}, {} rect(s))", output.display(), w, h, nums.len() / 4);
+}
+
+struct GenArgs<'a> {
+    prompt: &'a str,
+    pipeline: &'a str,
+    negative: Option<&'a str>,
+    workflow: Option<&'a Path>,
+    model: &'a str,
+    lora: &'a str,
+    size: Option<&'a str>,
+    steps: Option<u32>,
+    cfg: Option<f32>,
+    denoise: Option<f32>,
+    seed: Option<u64>,
+    from: Option<&'a Path>,
+    mask: Option<&'a Path>,
+    output: Option<&'a Path>,
+    pixelify: bool,
+    host: &'a str,
 }
 
 fn cmd_init(name: &str, palette: &str, scale: u32, engine: &str) {
@@ -592,35 +685,29 @@ struct FrameMeta {
 
 // ===================== COMFYUI GENERATION =====================
 
-fn default_workflow_path() -> PathBuf {
-    // 1. ~/.claude/skills/pixel-pipeline/workflows/sdxl-pixel-art.json (installed location)
-    let installed = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join(".claude/skills/pixel-pipeline/workflows/sdxl-pixel-art.json"));
-    if let Some(p) = &installed {
-        if p.exists() {
-            return p.clone();
-        }
+fn workflow_search_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(home) = std::env::var("HOME") {
+        out.push(PathBuf::from(&home).join(".claude/skills/pixel-pipeline/workflows"));
+        out.push(PathBuf::from(&home).join("Desktop/claude/repos/skills/pixel-pipeline/workflows"));
     }
-    // 2. Sibling of binary (when running from cargo install path)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            let candidate = parent.join("workflows/sdxl-pixel-art.json");
-            if candidate.exists() {
-                return candidate;
-            }
+            out.push(parent.join("workflows"));
         }
     }
-    // 3. Source repo (when running from `cargo run` in the repo)
-    let repo = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join("Desktop/claude/repos/skills/pixel-pipeline/workflows/sdxl-pixel-art.json"));
-    if let Some(p) = &repo {
-        if p.exists() {
-            return p.clone();
+    out.push(PathBuf::from("workflows"));
+    out
+}
+
+fn find_pipeline_workflow(name: &str) -> Option<PathBuf> {
+    for dir in workflow_search_dirs() {
+        let candidate = dir.join(format!("{}.json", name));
+        if candidate.exists() {
+            return Some(candidate);
         }
     }
-    PathBuf::from("workflows/sdxl-pixel-art.json")
+    None
 }
 
 fn comfyui_running(host: &str) -> bool {
@@ -707,23 +794,148 @@ fn random_seed() -> u64 {
     nanos ^ pid.wrapping_mul(0x9E37_79B9_7F4A_7C15)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn cmd_gen(
-    prompt: &str,
-    negative: Option<&str>,
-    workflow_path: Option<&Path>,
-    model: &str,
-    lora: &str,
-    size: &str,
-    steps: u32,
-    cfg: f32,
-    seed: Option<u64>,
-    output: Option<&Path>,
-    pixelify: bool,
-    host: &str,
-) {
+#[derive(Debug, Deserialize, Default)]
+struct PipelineMeta {
+    #[serde(default)]
+    #[allow(dead_code)]
+    name: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    description: String,
+    #[serde(default)]
+    params: std::collections::HashMap<String, ParamLoc>,
+    #[serde(default)]
+    requires_image: bool,
+    #[serde(default)]
+    requires_mask: bool,
+    #[serde(default)]
+    defaults: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ParamLoc {
+    node: String,
+    input: String,
+}
+
+struct UploadResult {
+    name: String,
+}
+
+fn upload_image(host: &str, path: &Path) -> Result<UploadResult, String> {
+    if !path.exists() {
+        return Err(format!("image not found: {}", path.display()));
+    }
+    let url = format!("{}/upload/image", host.trim_end_matches('/'));
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "-X",
+            "POST",
+            "-F",
+            &format!("image=@{}", path.display()),
+            "-F",
+            "overwrite=true",
+            &url,
+        ])
+        .output()
+        .map_err(|e| format!("curl upload: {}", e))?;
+    if !out.status.success() {
+        return Err(format!("upload failed: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    let body = String::from_utf8_lossy(&out.stdout).to_string();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("parse upload response: {} (body: {})", e, body))?;
+    let name = parsed
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if name.is_empty() {
+        return Err(format!("upload response missing 'name': {}", body));
+    }
+    Ok(UploadResult { name })
+}
+
+fn apply_param(
+    workflow: &mut serde_json::Value,
+    meta: &PipelineMeta,
+    key: &str,
+    value: serde_json::Value,
+) -> bool {
+    if let Some(loc) = meta.params.get(key) {
+        set_input(workflow, &loc.node, &loc.input, value);
+        true
+    } else {
+        false
+    }
+}
+
+fn cmd_pipelines() {
+    let mut seen = std::collections::HashSet::new();
+    let mut entries: Vec<(String, String, String, PathBuf)> = Vec::new();
+    for dir in workflow_search_dirs() {
+        let rd = match fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().map(|e| e != "json").unwrap_or(true) {
+                continue;
+            }
+            let name = match p.file_stem().map(|s| s.to_string_lossy().to_string()) {
+                Some(n) => n,
+                None => continue,
+            };
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            let content = fs::read_to_string(&p).unwrap_or_default();
+            let parsed: serde_json::Value =
+                serde_json::from_str(&content).unwrap_or(serde_json::Value::Null);
+            let m = parsed.get("_meta").cloned().unwrap_or(serde_json::Value::Null);
+            let desc = m
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("(no description)")
+                .to_string();
+            let mut reqs = Vec::new();
+            if m.get("requires_image").and_then(|v| v.as_bool()).unwrap_or(false) {
+                reqs.push("--from <image>");
+            }
+            if m.get("requires_mask").and_then(|v| v.as_bool()).unwrap_or(false) {
+                reqs.push("--mask <image>");
+            }
+            let reqs_str = if reqs.is_empty() {
+                String::new()
+            } else {
+                format!("requires {}", reqs.join(" + "))
+            };
+            entries.push((name, desc, reqs_str, p));
+        }
+    }
+    if entries.is_empty() {
+        eprintln!("No workflows found in ~/.claude/skills/pixel-pipeline/workflows/ or repo workflows/.");
+        return;
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    println!("{:<14} {}", "PIPELINE", "DESCRIPTION");
+    println!("{}", "─".repeat(80));
+    for (name, desc, reqs, path) in &entries {
+        let desc_short: String = desc.chars().take(140).collect();
+        println!("{:<14} {}", name, desc_short);
+        if !reqs.is_empty() {
+            println!("{:<14} ({})", "", reqs);
+        }
+        println!("{:<14} {}", "", path.display());
+        println!();
+    }
+}
+
+fn cmd_gen(args: GenArgs) {
     // Resolve host: if empty, auto-detect across common ports.
-    let resolved_host = if host.is_empty() {
+    let resolved_host = if args.host.is_empty() {
         let candidates = ["http://localhost:8000", "http://localhost:8188"];
         match candidates.iter().find(|c| comfyui_running(c)) {
             Some(h) => h.to_string(),
@@ -735,27 +947,32 @@ fn cmd_gen(
             }
         }
     } else {
-        if !comfyui_running(host) {
+        if !comfyui_running(args.host) {
             eprintln!(
                 "ComfyUI not reachable at {}.\n  Start it: open /Applications/ComfyUI.app\n  Or pass --host <url> if running elsewhere.",
-                host
+                args.host
             );
             std::process::exit(1);
         }
-        host.to_string()
+        args.host.to_string()
     };
     let host = resolved_host.as_str();
-    eprintln!("Using ComfyUI at {}", host);
+    eprintln!("Using ComfyUI at {}  (pipeline: {})", host, args.pipeline);
 
-    // Load workflow template
-    let template_path = workflow_path
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(default_workflow_path);
-    if !template_path.exists() {
-        eprintln!("Workflow template not found at {}", template_path.display());
-        eprintln!("Re-install the skill (cp workflows/ to ~/.claude/skills/pixel-pipeline/) or pass --workflow <path>.");
-        std::process::exit(1);
-    }
+    // Resolve workflow path: --workflow overrides --pipeline lookup
+    let template_path = match args.workflow {
+        Some(p) => p.to_path_buf(),
+        None => match find_pipeline_workflow(args.pipeline) {
+            Some(p) => p,
+            None => {
+                eprintln!(
+                    "Pipeline '{}' not found. List options with: pix pipelines",
+                    args.pipeline
+                );
+                std::process::exit(1);
+            }
+        },
+    };
     let template_str = match fs::read_to_string(&template_path) {
         Ok(s) => s,
         Err(e) => {
@@ -763,7 +980,6 @@ fn cmd_gen(
             std::process::exit(1);
         }
     };
-
     let mut workflow: serde_json::Value = match serde_json::from_str(&template_str) {
         Ok(v) => v,
         Err(e) => {
@@ -772,42 +988,109 @@ fn cmd_gen(
         }
     };
 
-    // Parameterize
-    let (w, h) = parse_size(size);
-    let actual_seed = seed.unwrap_or_else(random_seed);
+    // Extract meta
+    let meta_value = workflow.get("_meta").cloned().unwrap_or(serde_json::Value::Null);
+    let meta: PipelineMeta = serde_json::from_value(meta_value).unwrap_or_default();
 
-    // Node IDs from the bundled template (see _meta.tunable_nodes in the JSON)
-    set_input(&mut workflow, "4", "ckpt_name", serde_json::Value::String(model.to_string()));
-    set_input(&mut workflow, "5", "width", serde_json::json!(w));
-    set_input(&mut workflow, "5", "height", serde_json::json!(h));
-    set_input(&mut workflow, "6", "text", serde_json::Value::String(prompt.to_string()));
-    if let Some(n) = negative {
-        set_input(&mut workflow, "7", "text", serde_json::Value::String(n.to_string()));
+    // Validate required image inputs
+    if meta.requires_image && args.from.is_none() {
+        eprintln!(
+            "Pipeline '{}' requires --from <image>",
+            args.pipeline
+        );
+        std::process::exit(2);
     }
-    set_input(&mut workflow, "3", "seed", serde_json::json!(actual_seed));
-    set_input(&mut workflow, "3", "steps", serde_json::json!(steps));
-    set_input(&mut workflow, "3", "cfg", serde_json::json!(cfg));
-
-    // LoRA handling: if "none", swap KSampler.model + CLIPTextEncode.clip to point at "4" directly
-    if lora.eq_ignore_ascii_case("none") {
-        if let Some(node) = workflow.get_mut("3").and_then(|n| n.get_mut("inputs")) {
-            node["model"] = serde_json::json!(["4", 0]);
-        }
-        if let Some(node) = workflow.get_mut("6").and_then(|n| n.get_mut("inputs")) {
-            node["clip"] = serde_json::json!(["4", 1]);
-        }
-        if let Some(node) = workflow.get_mut("7").and_then(|n| n.get_mut("inputs")) {
-            node["clip"] = serde_json::json!(["4", 1]);
-        }
-        // Remove the LoRA node
-        if let Some(map) = workflow.as_object_mut() {
-            map.remove("10");
-        }
-    } else {
-        set_input(&mut workflow, "10", "lora_name", serde_json::Value::String(lora.to_string()));
+    if meta.requires_mask && args.mask.is_none() {
+        eprintln!(
+            "Pipeline '{}' requires --mask <image>",
+            args.pipeline
+        );
+        std::process::exit(2);
     }
 
-    // Strip _meta keys before sending (ComfyUI doesn't care but it's tidier)
+    // Upload input images if needed
+    if let Some(p) = args.from {
+        if !meta.params.contains_key("image") {
+            eprintln!("Pipeline '{}' does not accept --from (no 'image' param in workflow _meta)", args.pipeline);
+            std::process::exit(2);
+        }
+        eprintln!("Uploading source image: {}", p.display());
+        let r = match upload_image(host, p) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("upload source: {}", e);
+                std::process::exit(1);
+            }
+        };
+        apply_param(&mut workflow, &meta, "image", serde_json::Value::String(r.name));
+    }
+    if let Some(p) = args.mask {
+        if !meta.params.contains_key("mask") {
+            eprintln!("Pipeline '{}' does not accept --mask (no 'mask' param in workflow _meta)", args.pipeline);
+            std::process::exit(2);
+        }
+        eprintln!("Uploading mask: {}", p.display());
+        let r = match upload_image(host, p) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("upload mask: {}", e);
+                std::process::exit(1);
+            }
+        };
+        apply_param(&mut workflow, &meta, "mask", serde_json::Value::String(r.name));
+    }
+
+    // Helper: default lookup (per-pipeline default or global fallback)
+    let default_size: String = meta
+        .defaults
+        .get("size")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| "1024x1024".to_string());
+    let default_steps: u32 = meta
+        .defaults
+        .get("steps")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32)
+        .unwrap_or(25);
+    let default_cfg: f32 = meta
+        .defaults
+        .get("cfg")
+        .and_then(|v| v.as_f64())
+        .map(|n| n as f32)
+        .unwrap_or(7.5);
+    let default_denoise: f32 = meta
+        .defaults
+        .get("denoise")
+        .and_then(|v| v.as_f64())
+        .map(|n| n as f32)
+        .unwrap_or(1.0);
+
+    let size_str = args.size.unwrap_or(default_size.as_str());
+    let (w, h) = parse_size(size_str);
+    let steps = args.steps.unwrap_or(default_steps);
+    let cfg = args.cfg.unwrap_or(default_cfg);
+    let denoise = args.denoise.unwrap_or(default_denoise);
+    let actual_seed = args.seed.unwrap_or_else(random_seed);
+
+    // Apply parameters via metadata
+    apply_param(&mut workflow, &meta, "model", serde_json::Value::String(args.model.to_string()));
+    if !args.lora.eq_ignore_ascii_case("none") {
+        apply_param(&mut workflow, &meta, "lora", serde_json::Value::String(args.lora.to_string()));
+    }
+    apply_param(&mut workflow, &meta, "prompt", serde_json::Value::String(args.prompt.to_string()));
+    if let Some(n) = args.negative {
+        apply_param(&mut workflow, &meta, "negative", serde_json::Value::String(n.to_string()));
+    }
+    apply_param(&mut workflow, &meta, "seed", serde_json::json!(actual_seed));
+    apply_param(&mut workflow, &meta, "steps", serde_json::json!(steps));
+    apply_param(&mut workflow, &meta, "cfg", serde_json::json!(cfg));
+    apply_param(&mut workflow, &meta, "width", serde_json::json!(w));
+    apply_param(&mut workflow, &meta, "height", serde_json::json!(h));
+    // denoise only applies if the pipeline declares it (img2img / inpaint)
+    apply_param(&mut workflow, &meta, "denoise", serde_json::json!(denoise));
+
+    // Strip _meta keys before sending
     if let Some(map) = workflow.as_object_mut() {
         map.remove("_meta");
         for (_, v) in map.iter_mut() {
@@ -854,9 +1137,9 @@ fn cmd_gen(
     if let Some(error) = real_error {
         eprintln!("ComfyUI rejected the workflow:\n{}", serde_json::to_string_pretty(error).unwrap_or_default());
         eprintln!("\nCommon causes:");
-        eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", model);
-        if !lora.eq_ignore_ascii_case("none") {
-            eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/ (pass --lora none to skip)", lora);
+        eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", args.model);
+        if !args.lora.eq_ignore_ascii_case("none") {
+            eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/", args.lora);
         }
         std::process::exit(1);
     }
@@ -934,9 +1217,10 @@ fn cmd_gen(
         urlencode(&filename),
         urlencode(&subfolder)
     );
-    let out_path = output
+    let out_path = args
+        .output
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from(format!("pix-gen-{}.png", actual_seed)));
+        .unwrap_or_else(|| PathBuf::from(format!("pix-{}-{}.png", args.pipeline, actual_seed)));
     if let Err(e) = curl_download(&view_url, &out_path) {
         eprintln!("download: {}", e);
         std::process::exit(1);
@@ -944,7 +1228,7 @@ fn cmd_gen(
     println!("wrote {} ({}x{}, seed {})", out_path.display(), w, h, actual_seed);
 
     // Optional pixelify pass
-    if pixelify {
+    if args.pixelify {
         let cfg = read_config();
         let scale = cfg.as_ref().map(|c| c.scale).unwrap_or(64);
         let palette = cfg.as_ref().map(|c| c.palette.clone()).unwrap_or_else(|| "endesga-32".to_string());
