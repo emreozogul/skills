@@ -216,12 +216,15 @@ enum Cmd {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
-    /// Despeckle / clean up generated sprites — 3x3 median filter, skips transparent pixels
+    /// Despeckle / clean up generated sprites — 3x3 median filter + drops tiny disconnected islands
     Clean {
         input: PathBuf,
         /// Number of median passes (1 = subtle, 2-3 = aggressive)
         #[arg(long, default_value_t = 1)]
         passes: u32,
+        /// Drop disconnected opaque islands smaller than this many pixels (0 = keep all). Removes grid-line remnants, stray dots.
+        #[arg(long, default_value_t = 24)]
+        drop_islands: u32,
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
@@ -711,7 +714,7 @@ fn main() {
         Cmd::BgRemove { input, tolerance, sample, feather, output } => {
             cmd_bg_remove(&input, tolerance, sample.as_deref(), feather, output.as_deref())
         }
-        Cmd::Clean { input, passes, output } => cmd_clean(&input, passes, output.as_deref()),
+        Cmd::Clean { input, passes, drop_islands, output } => cmd_clean(&input, passes, drop_islands, output.as_deref()),
         Cmd::Preview { input, width } => cmd_preview(&input, width),
         Cmd::PaletteFrom { input, colors, bucket, save, note, max_dominance } => {
             cmd_palette_from(&input, colors, bucket, save.as_deref(), &note, max_dominance)
@@ -1821,7 +1824,55 @@ fn sobel_into_mask(src: &RgbaImage, mask: &mut RgbaImage, threshold: u32) {
     }
 }
 
-fn cmd_clean(input: &Path, passes: u32, output: Option<&Path>) {
+/// Remove opaque connected components smaller than `min_px`. Kills grid-line
+/// remnants and stray dots that survive the median filter (they're small
+/// disconnected islands, not single pixels).
+fn drop_small_islands(img: &RgbaImage, min_px: u32) -> (RgbaImage, u32) {
+    let (w, h) = img.dimensions();
+    let mut labels: Vec<i32> = vec![-1; (w * h) as usize];
+    let idx = |x: u32, y: u32| (y * w + x) as usize;
+    let is_op = |x: u32, y: u32| img.get_pixel(x, y).0[3] > 0;
+    let mut comp_sizes: Vec<u32> = Vec::new();
+
+    for y in 0..h {
+        for x in 0..w {
+            if labels[idx(x, y)] != -1 || !is_op(x, y) {
+                continue;
+            }
+            let label = comp_sizes.len() as i32;
+            let mut size = 0u32;
+            let mut stack = vec![(x, y)];
+            while let Some((cx, cy)) = stack.pop() {
+                let i = idx(cx, cy);
+                if labels[i] != -1 || !is_op(cx, cy) {
+                    continue;
+                }
+                labels[i] = label;
+                size += 1;
+                if cx > 0 { stack.push((cx - 1, cy)); }
+                if cx + 1 < w { stack.push((cx + 1, cy)); }
+                if cy > 0 { stack.push((cx, cy - 1)); }
+                if cy + 1 < h { stack.push((cx, cy + 1)); }
+            }
+            comp_sizes.push(size);
+        }
+    }
+
+    let mut out = img.clone();
+    let mut dropped = 0u32;
+    for y in 0..h {
+        for x in 0..w {
+            let l = labels[idx(x, y)];
+            if l >= 0 && comp_sizes[l as usize] < min_px {
+                out.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                dropped += 1;
+            }
+        }
+    }
+    (out, dropped)
+}
+
+fn cmd_clean(input: &Path, passes: u32, drop_islands: u32, output: Option<&Path>) {
     let img = match image::open(input) {
         Ok(i) => i.to_rgba8(),
         Err(e) => {
@@ -1876,6 +1927,14 @@ fn cmd_clean(input: &Path, passes: u32, output: Option<&Path>) {
         }
         current = next;
     }
+
+    let mut dropped = 0u32;
+    if drop_islands > 0 {
+        let (cleaned, n) = drop_small_islands(&current, drop_islands);
+        current = cleaned;
+        dropped = n;
+    }
+
     let out_path = output
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| {
@@ -1887,7 +1946,13 @@ fn cmd_clean(input: &Path, passes: u32, output: Option<&Path>) {
         eprintln!("save {}: {}", out_path.display(), e);
         std::process::exit(1);
     }
-    println!("wrote {} ({} pass{})", out_path.display(), passes, if passes == 1 { "" } else { "es" });
+    println!(
+        "wrote {} ({} pass{}{})",
+        out_path.display(),
+        passes,
+        if passes == 1 { "" } else { "es" },
+        if dropped > 0 { format!(", dropped {} island px", dropped) } else { String::new() }
+    );
 }
 
 fn cmd_preview(input: &Path, max_width: u32) {
@@ -3885,7 +3950,7 @@ fn api_action(body: &str, gallery: &Path) -> (u16, &'static str, Vec<u8>) {
         }
         "clean" if exists => {
             let out = path.with_extension("clean.png");
-            cmd_clean(&path, 2, Some(&out));
+            cmd_clean(&path, 2, 24, Some(&out));
             (200, "application/json", json_response(serde_json::json!({"ok": true, "output": out.display().to_string()})))
         }
         _ => (400, "application/json", json_response(serde_json::json!({"error": "unsupported or file missing"}))),
