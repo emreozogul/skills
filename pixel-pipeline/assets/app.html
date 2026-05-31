@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>pix — pixel art studio</title>
+<style>
+  :root {
+    --bg: #1a1825;
+    --panel: #211f30;
+    --panel-2: #2a2940;
+    --border: #3a3850;
+    --text: #f0eef2;
+    --muted: #948fae;
+    --accent: #f59e0b;
+    --accent-hover: #fbbf24;
+    --success: #4ade80;
+    --error: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, system-ui, "Inter", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  aside h1 {
+    font-size: 18px;
+    margin: 0 0 4px 0;
+    letter-spacing: 0.3px;
+  }
+  aside h1 span { color: var(--accent); }
+  aside .subtitle { color: var(--muted); font-size: 12px; margin: 0 0 8px 0; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .field input, .field textarea, .field select {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    border-color: var(--accent);
+  }
+  .field textarea { min-height: 70px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .field .hint { color: var(--muted); font-size: 11px; }
+  button.primary {
+    background: var(--accent);
+    color: #1a1825;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button.primary:hover { background: var(--accent-hover); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 38px;
+  }
+  .status.running { color: var(--accent); }
+  .status.success { color: var(--success); border-color: var(--success); }
+  .status.error { color: var(--error); border-color: var(--error); }
+  main {
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .toolbar input {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    outline: none;
+    flex: 1;
+  }
+  .toolbar button {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .toolbar button:hover { border-color: var(--accent); }
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.1s, border-color 0.1s;
+    aspect-ratio: 1;
+    position: relative;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+    background:
+      linear-gradient(45deg, #1a1825 25%, transparent 25%),
+      linear-gradient(-45deg, #1a1825 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #1a1825 75%),
+      linear-gradient(-45deg, transparent 75%, #1a1825 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    background-color: #2a2940;
+  }
+  .card .badge {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0,0,0,0.7);
+    color: var(--text);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 8, 20, 0.9);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 1100px;
+    width: 100%;
+    max-height: 90vh;
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    overflow: hidden;
+  }
+  .modal-image {
+    background: var(--bg);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+  }
+  .modal-image img {
+    max-width: 100%;
+    max-height: 80vh;
+    image-rendering: pixelated;
+  }
+  .modal-side {
+    border-left: 1px solid var(--border);
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: var(--panel-2);
+  }
+  .modal-side h2 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .modal-side .row-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .modal-side .row-info span:last-child { color: var(--text); font-family: ui-monospace, monospace; }
+  .actions { display: flex; flex-direction: column; gap: 8px; }
+  .actions button {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+  }
+  .actions button:hover { border-color: var(--accent); }
+  .actions button.primary { background: var(--accent); color: var(--bg); border: none; }
+  .actions .group-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-top: 6px;
+  }
+  .modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(0,0,0,0.5);
+    border: none;
+    color: var(--text);
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 18px;
+  }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 60px 20px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+  }
+</style>
+</head>
+<body>
+<aside>
+  <div>
+    <h1>pix <span>studio</span></h1>
+    <p class="subtitle">local pixel art generation</p>
+  </div>
+
+  <div class="field">
+    <label for="prompt">prompt</label>
+    <textarea id="prompt" placeholder="pixel art knight with sword"></textarea>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="pipeline">pipeline</label>
+      <select id="pipeline"></select>
+    </div>
+    <div class="field">
+      <label for="style">style</label>
+      <select id="style"><option value="">(none)</option></select>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="variations">variations (comma-separated)</label>
+    <input id="variations" type="text" placeholder="oak, pine, birch, dead" />
+    <span class="hint">one image per variant suffix appended to the prompt</span>
+  </div>
+
+  <div class="row3">
+    <div class="field">
+      <label for="batch">batch</label>
+      <input id="batch" type="number" value="1" min="1" max="16" />
+    </div>
+    <div class="field">
+      <label for="seed">seed</label>
+      <input id="seed" type="text" placeholder="random" />
+    </div>
+    <div class="field">
+      <label for="steps">steps</label>
+      <input id="steps" type="number" value="25" min="5" max="50" />
+    </div>
+  </div>
+
+  <div class="field" id="from-field" style="display:none;">
+    <label for="from">--from (input image filename in gallery)</label>
+    <input id="from" type="text" placeholder="" />
+  </div>
+
+  <div class="row">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);">
+      <input type="checkbox" id="bg-remove" checked /> bg-remove
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);">
+      <input type="checkbox" id="pixelify" /> pixelify
+    </label>
+  </div>
+
+  <button class="primary" id="generate">generate</button>
+  <div class="status" id="status">idle</div>
+</aside>
+
+<main>
+  <div class="toolbar">
+    <input type="text" id="filter" placeholder="filter by filename..." />
+    <button id="refresh">↻ refresh</button>
+    <button id="open-gallery">📁 open folder</button>
+  </div>
+  <div class="gallery" id="gallery"></div>
+</main>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" style="position:relative;">
+    <button class="modal-close" id="modal-close">×</button>
+    <div class="modal-image">
+      <img id="modal-img" />
+    </div>
+    <div class="modal-side">
+      <h2>image</h2>
+      <div class="row-info"><span>file</span><span id="modal-file"></span></div>
+      <div class="row-info"><span>size</span><span id="modal-size"></span></div>
+      <div class="row-info"><span>seed</span><span id="modal-seed"></span></div>
+
+      <h2 style="margin-top:8px;">actions</h2>
+      <div class="actions">
+        <span class="group-label">re-roll</span>
+        <button data-action="regenerate">regenerate with same prompt</button>
+        <button data-action="send-vary">send to <b>vary</b> (img2img)</button>
+
+        <span class="group-label">edit</span>
+        <button data-action="outline">add 2px outline</button>
+        <button data-action="recolor">recolor (silver → gold)</button>
+        <button data-action="clean">clean / despeckle</button>
+
+        <span class="group-label">file</span>
+        <button data-action="reveal">reveal in Finder</button>
+        <button data-action="delete">delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let CURRENT_IMAGE = null;
+let PIPELINES = [];
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function loadOptions() {
+  // Pipelines
+  PIPELINES = await api("/api/pipelines");
+  const pipSel = $("pipeline");
+  pipSel.innerHTML = "";
+  for (const p of PIPELINES) {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.name + (p.requires_image ? "  (needs --from)" : "");
+    pipSel.appendChild(opt);
+  }
+  pipSel.value = "character";
+  pipSel.addEventListener("change", updateFromVisibility);
+  updateFromVisibility();
+
+  // Styles
+  const styles = await api("/api/styles");
+  const styleSel = $("style");
+  styleSel.innerHTML = '<option value="">(none)</option>';
+  for (const s of styles) {
+    const opt = document.createElement("option");
+    opt.value = s.name;
+    opt.textContent = `${s.name} (${s.palette})`;
+    styleSel.appendChild(opt);
+  }
+}
+
+function updateFromVisibility() {
+  const pipName = $("pipeline").value;
+  const p = PIPELINES.find(x => x.name === pipName);
+  const fromField = $("from-field");
+  fromField.style.display = p && p.requires_image ? "" : "none";
+}
+
+async function refreshGallery() {
+  const filter = $("filter").value.toLowerCase();
+  const images = await api("/api/images");
+  const gallery = $("gallery");
+  gallery.innerHTML = "";
+  const filtered = images.filter(im =>
+    !filter || im.filename.toLowerCase().includes(filter)
+  );
+  if (filtered.length === 0) {
+    gallery.innerHTML = `<div class="empty">No images yet. Generate something to fill the gallery.</div>`;
+    return;
+  }
+  for (const im of filtered) {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <img src="/file?path=${encodeURIComponent(im.path)}" loading="lazy" />
+      <div class="badge">${im.size_kb}KB</div>
+    `;
+    card.addEventListener("click", () => openModal(im));
+    gallery.appendChild(card);
+  }
+}
+
+function openModal(im) {
+  CURRENT_IMAGE = im;
+  $("modal-img").src = `/file?path=${encodeURIComponent(im.path)}`;
+  $("modal-file").textContent = im.filename;
+  $("modal-size").textContent = `${im.width}×${im.height}`;
+  $("modal-seed").textContent = im.seed || "—";
+  $("modal-overlay").classList.add("open");
+}
+
+function closeModal() {
+  $("modal-overlay").classList.remove("open");
+  CURRENT_IMAGE = null;
+}
+
+async function generate() {
+  const btn = $("generate");
+  const status = $("status");
+  btn.disabled = true;
+  status.className = "status running";
+  status.textContent = "preparing...";
+
+  const body = {
+    prompt: $("prompt").value,
+    pipeline: $("pipeline").value,
+    style: $("style").value || null,
+    variations: $("variations").value || null,
+    batch: parseInt($("batch").value || "1", 10),
+    seed: $("seed").value ? parseInt($("seed").value, 10) : null,
+    steps: parseInt($("steps").value || "25", 10),
+    from: $("from").value || null,
+    bg_remove: $("bg-remove").checked,
+    pixelify: $("pixelify").checked,
+  };
+
+  if (!body.prompt.trim()) {
+    status.className = "status error";
+    status.textContent = "prompt required";
+    btn.disabled = false;
+    return;
+  }
+
+  status.textContent = `generating... (${body.batch}× ${body.pipeline})`;
+  try {
+    const result = await api("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    status.className = "status success";
+    status.textContent = `done — ${result.count} image(s) saved`;
+    await refreshGallery();
+  } catch (e) {
+    status.className = "status error";
+    status.textContent = "error: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runAction(action) {
+  if (!CURRENT_IMAGE) return;
+  const status = $("status");
+  status.className = "status running";
+  status.textContent = `${action}...`;
+  try {
+    const result = await api("/api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, path: CURRENT_IMAGE.path }),
+    });
+    status.className = "status success";
+    status.textContent = `${action} done`;
+    if (action === "delete" || action === "reveal") closeModal();
+    await refreshGallery();
+  } catch (e) {
+    status.className = "status error";
+    status.textContent = "action failed: " + e.message;
+  }
+}
+
+$("generate").addEventListener("click", generate);
+$("refresh").addEventListener("click", refreshGallery);
+$("open-gallery").addEventListener("click", () => runAction("open-gallery"));
+$("filter").addEventListener("input", refreshGallery);
+$("modal-close").addEventListener("click", closeModal);
+$("modal-overlay").addEventListener("click", (e) => {
+  if (e.target.id === "modal-overlay") closeModal();
+});
+document.querySelectorAll(".actions button").forEach(btn => {
+  btn.addEventListener("click", () => runAction(btn.dataset.action));
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeModal();
+});
+
+loadOptions().then(refreshGallery).catch(e => {
+  $("status").className = "status error";
+  $("status").textContent = "init failed: " + e.message;
+});
+</script>
+</body>
+</html>

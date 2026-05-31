@@ -258,6 +258,14 @@ enum Cmd {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
+    /// Start a local web UI for generation + gallery (browse generated sprites, run pipelines, edit)
+    Server {
+        #[arg(long, default_value_t = 8765)]
+        port: u16,
+        /// Override gallery directory (default: ~/Documents/pix-gallery)
+        #[arg(long)]
+        gallery: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -490,6 +498,7 @@ fn main() {
         Cmd::Recolor { input, swap, tolerance, output } => {
             cmd_recolor(&input, &swap, tolerance, output.as_deref())
         }
+        Cmd::Server { port, gallery } => cmd_server(port, gallery.as_deref()),
     }
 }
 
@@ -2544,4 +2553,407 @@ fn cmd_pack(dir: &Path, cell: Option<&str>, cols: Option<u32>, output: &Path) {
     fs::write(&json_path, serde_json::to_string_pretty(&meta).unwrap()).expect("save json");
     println!("wrote {} ({}x{}, {} cells)", output.display(), sheet_w, sheet_h, n);
     println!("wrote {}", json_path.display());
+}
+
+// =====================================================================
+// SERVER MODE — local web UI for generation + gallery
+// =====================================================================
+
+const APP_HTML: &str = include_str!("../assets/app.html");
+
+fn default_gallery_dir() -> PathBuf {
+    let home = std::env::var("HOME").expect("HOME");
+    PathBuf::from(home).join("Documents/pix-gallery")
+}
+
+fn cmd_server(port: u16, gallery_override: Option<&Path>) {
+    let gallery = gallery_override
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(default_gallery_dir);
+    fs::create_dir_all(&gallery).expect("create gallery dir");
+
+    let addr = format!("127.0.0.1:{}", port);
+    let server = match tiny_http::Server::http(&addr) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("could not bind {}: {}", addr, e);
+            std::process::exit(1);
+        }
+    };
+    println!("pix studio running at http://{}", addr);
+    println!("Gallery: {}", gallery.display());
+    println!("Open in your browser; ^C to stop.");
+
+    let gallery = std::sync::Arc::new(gallery);
+
+    for request in server.incoming_requests() {
+        let gallery = gallery.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = handle_request(request, &gallery) {
+                eprintln!("request error: {}", e);
+            }
+        });
+    }
+}
+
+fn handle_request(
+    mut request: tiny_http::Request,
+    gallery: &Path,
+) -> std::io::Result<()> {
+    let url = request.url().to_string();
+    let method = request.method().clone();
+    let path = url.split('?').next().unwrap_or("/").to_string();
+
+    // Read body for POST endpoints
+    let body = if method == tiny_http::Method::Post {
+        let mut buf = String::new();
+        let _ = request.as_reader().read_to_string(&mut buf);
+        buf
+    } else {
+        String::new()
+    };
+
+    let (status, mime, payload): (u16, &str, Vec<u8>) = match (method.as_str(), path.as_str()) {
+        ("GET", "/") => (200, "text/html; charset=utf-8", APP_HTML.as_bytes().to_vec()),
+        ("GET", "/api/pipelines") => (200, "application/json", api_pipelines()),
+        ("GET", "/api/styles") => (200, "application/json", api_styles()),
+        ("GET", "/api/palettes") => (200, "application/json", api_palettes()),
+        ("GET", "/api/images") => (200, "application/json", api_images(gallery)),
+        ("GET", "/file") => return serve_file(request, &url, gallery),
+        ("POST", "/api/generate") => api_generate(&body, gallery),
+        ("POST", "/api/action") => api_action(&body, gallery),
+        _ => (404, "text/plain", b"not found".to_vec()),
+    };
+
+    let response = tiny_http::Response::from_data(payload)
+        .with_status_code(status)
+        .with_header(
+            tiny_http::Header::from_bytes(&b"Content-Type"[..], mime.as_bytes())
+                .unwrap(),
+        );
+    request.respond(response)
+}
+
+fn json_response(value: serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec())
+}
+
+fn api_pipelines() -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for dir in workflow_search_dirs() {
+        if let Ok(rd) = fs::read_dir(&dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.extension().map(|e| e != "json").unwrap_or(true) {
+                    continue;
+                }
+                let name = match p.file_stem().map(|s| s.to_string_lossy().to_string()) {
+                    Some(n) => n,
+                    None => continue,
+                };
+                if !seen.insert(name.clone()) {
+                    continue;
+                }
+                let content = fs::read_to_string(&p).unwrap_or_default();
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&content).unwrap_or(serde_json::Value::Null);
+                let m = parsed.get("_meta").cloned().unwrap_or(serde_json::Value::Null);
+                out.push(serde_json::json!({
+                    "name": name,
+                    "description": m.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+                    "requires_image": m.get("requires_image").and_then(|v| v.as_bool()).unwrap_or(false),
+                    "requires_mask": m.get("requires_mask").and_then(|v| v.as_bool()).unwrap_or(false),
+                }));
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        a.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+    json_response(serde_json::Value::Array(out))
+}
+
+fn api_styles() -> Vec<u8> {
+    let dir = style_dir();
+    let mut out = Vec::new();
+    if let Ok(rd) = fs::read_dir(&dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().map(|e| e != "json").unwrap_or(true) {
+                continue;
+            }
+            if let Some(name) = p.file_stem().map(|s| s.to_string_lossy().to_string()) {
+                if let Some(s) = load_style(&name) {
+                    out.push(serde_json::json!({
+                        "name": s.name,
+                        "palette": s.palette,
+                        "scale": s.scale,
+                        "default_pipeline": s.default_pipeline,
+                    }));
+                }
+            }
+        }
+    }
+    json_response(serde_json::Value::Array(out))
+}
+
+fn api_palettes() -> Vec<u8> {
+    let arr: Vec<serde_json::Value> = PALETTES
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "name": p.name,
+                "colors": p.colors_hex.len(),
+                "note": p.note,
+            })
+        })
+        .collect();
+    json_response(serde_json::Value::Array(arr))
+}
+
+fn api_images(gallery: &Path) -> Vec<u8> {
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    if let Ok(rd) = fs::read_dir(gallery) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_file() {
+                continue;
+            }
+            if p.extension().map(|e| e != "png").unwrap_or(true) {
+                continue;
+            }
+            let meta = match fs::metadata(&p) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            // Try to read PNG header for size
+            let (w, h) = image::image_dimensions(&p).unwrap_or((0, 0));
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            // try to parse seed from filename: pix-<pipeline>-<seed>-<idx>.png
+            let seed = stem
+                .split('-')
+                .filter_map(|s| s.parse::<u64>().ok())
+                .next();
+            entries.push(serde_json::json!({
+                "filename": p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+                "path": p.display().to_string(),
+                "width": w,
+                "height": h,
+                "size_kb": meta.len() / 1024,
+                "modified": modified,
+                "seed": seed,
+            }));
+        }
+    }
+    // newest first
+    entries.sort_by(|a, b| {
+        b.get("modified")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            .cmp(&a.get("modified").and_then(|v| v.as_u64()).unwrap_or(0))
+    });
+    json_response(serde_json::Value::Array(entries))
+}
+
+fn serve_file(
+    request: tiny_http::Request,
+    url: &str,
+    gallery: &Path,
+) -> std::io::Result<()> {
+    // Parse ?path=... query param
+    let path_param = url.split("path=").nth(1).unwrap_or("");
+    let raw = urlencoding::decode(path_param).unwrap_or_default().into_owned();
+    let candidate = PathBuf::from(&raw);
+
+    // Safety: only serve files that are real PNGs/JPGs and either inside the gallery
+    // or in /tmp or a known safe spot.
+    let canon = match candidate.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+        }
+    };
+    let safe = canon.starts_with(gallery) || canon.starts_with("/tmp/") || canon.starts_with(std::env::temp_dir());
+    if !safe {
+        return request.respond(tiny_http::Response::from_string("forbidden").with_status_code(403));
+    }
+    let bytes = match fs::read(&canon) {
+        Ok(b) => b,
+        Err(_) => {
+            return request.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+        }
+    };
+    let mime = match canon.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "json" => "application/json",
+        _ => "application/octet-stream",
+    };
+    let response = tiny_http::Response::from_data(bytes)
+        .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap())
+        .with_header(tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap());
+    request.respond(response)
+}
+
+#[derive(Deserialize)]
+struct GenerateRequest {
+    prompt: String,
+    pipeline: String,
+    #[serde(default)]
+    style: Option<String>,
+    #[serde(default)]
+    variations: Option<String>,
+    #[serde(default = "default_batch")]
+    batch: u32,
+    #[serde(default)]
+    seed: Option<u64>,
+    #[serde(default = "default_steps")]
+    steps: u32,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    bg_remove: bool,
+    #[serde(default)]
+    pixelify: bool,
+}
+
+fn default_batch() -> u32 { 1 }
+fn default_steps() -> u32 { 25 }
+
+fn api_generate(body: &str, gallery: &Path) -> (u16, &'static str, Vec<u8>) {
+    let req: GenerateRequest = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => {
+            return (400, "application/json", json_response(serde_json::json!({"error": e.to_string()})));
+        }
+    };
+
+    // Resolve --from inside the gallery if given
+    let from_path: Option<PathBuf> = req.from.as_ref().and_then(|f| {
+        if f.is_empty() {
+            return None;
+        }
+        let p = PathBuf::from(f);
+        if p.is_absolute() {
+            Some(p)
+        } else {
+            Some(gallery.join(f))
+        }
+    });
+
+    // Per-session output dir: <gallery>/<timestamp-pipeline>
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let session_dir = gallery.join(format!("session-{}-{}", ts, req.pipeline));
+    let _ = fs::create_dir_all(&session_dir);
+    let out_path = session_dir.join(format!("pix-{}-{}.png", req.pipeline, ts));
+
+    let from_ref = from_path.as_deref();
+    cmd_gen(GenArgs {
+        prompt: &req.prompt,
+        pipeline: &req.pipeline,
+        negative: None,
+        workflow: None,
+        model: "sd_xl_base_1.0.safetensors",
+        lora: "pixel-art-xl-v1.1.safetensors",
+        size: None,
+        steps: Some(req.steps),
+        cfg: None,
+        denoise: None,
+        seed: req.seed,
+        from: from_ref,
+        mask: None,
+        output: Some(&out_path),
+        pixelify: req.pixelify,
+        bg_remove: req.bg_remove,
+        batch: req.batch,
+        pack: false,
+        variations: req.variations.as_deref(),
+        style: req.style.as_deref().filter(|s| !s.is_empty()),
+        host: "",
+    });
+
+    // Collect produced files in the session dir
+    let mut produced: Vec<String> = Vec::new();
+    if let Ok(rd) = fs::read_dir(&session_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.extension().map(|e| e == "png").unwrap_or(false) {
+                // Move/copy into the gallery root so the flat gallery listing finds them.
+                let dest = gallery.join(p.file_name().unwrap_or_default());
+                let _ = fs::rename(&p, &dest);
+                produced.push(dest.display().to_string());
+            }
+        }
+        let _ = fs::remove_dir(&session_dir);
+    }
+
+    (200, "application/json", json_response(serde_json::json!({
+        "ok": true,
+        "count": produced.len(),
+        "files": produced,
+    })))
+}
+
+#[derive(Deserialize)]
+struct ActionRequest {
+    action: String,
+    #[serde(default)]
+    path: String,
+}
+
+fn api_action(body: &str, gallery: &Path) -> (u16, &'static str, Vec<u8>) {
+    let req: ActionRequest = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => {
+            return (400, "application/json", json_response(serde_json::json!({"error": e.to_string()})));
+        }
+    };
+    let path = PathBuf::from(&req.path);
+    let exists = path.exists();
+
+    match req.action.as_str() {
+        "open-gallery" => {
+            let _ = std::process::Command::new("open").arg(gallery).spawn();
+            (200, "application/json", json_response(serde_json::json!({"ok": true})))
+        }
+        "reveal" if exists => {
+            let _ = std::process::Command::new("open").arg("-R").arg(&path).spawn();
+            (200, "application/json", json_response(serde_json::json!({"ok": true})))
+        }
+        "delete" if exists => {
+            match fs::remove_file(&path) {
+                Ok(_) => (200, "application/json", json_response(serde_json::json!({"ok": true}))),
+                Err(e) => (500, "application/json", json_response(serde_json::json!({"error": e.to_string()}))),
+            }
+        }
+        "outline" if exists => {
+            let out = path.with_extension("outlined.png");
+            cmd_outline(&path, "000000", 2, false, Some(&out));
+            (200, "application/json", json_response(serde_json::json!({"ok": true, "output": out.display().to_string()})))
+        }
+        "recolor" if exists => {
+            let out = path.with_extension("recolored.png");
+            cmd_recolor(&path, "C0C0C0:FFD700,808080:CD7F32", 30, Some(&out));
+            (200, "application/json", json_response(serde_json::json!({"ok": true, "output": out.display().to_string()})))
+        }
+        "clean" if exists => {
+            let out = path.with_extension("clean.png");
+            cmd_clean(&path, 2, Some(&out));
+            (200, "application/json", json_response(serde_json::json!({"ok": true, "output": out.display().to_string()})))
+        }
+        _ => (400, "application/json", json_response(serde_json::json!({"error": "unsupported or file missing"}))),
+    }
 }
