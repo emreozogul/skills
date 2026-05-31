@@ -84,6 +84,18 @@ Ships as **both** a Skill Claude invokes on "what's on my plate today" / "mornin
 
 ---
 
+### [`skill-hygiene/`](./skill-hygiene) — Audit your installed skills for redundancy + dead weight
+
+Walks every on-disk skill, counts invocations from transcripts, detects literal cross-source duplicates via Jaccard similarity, flags weak descriptions that won't auto-trigger. Catches the "I installed 74 skills and use 7 of them" problem.
+
+Ships as **both** a Skill Claude invokes on "audit my skills" / "what's redundant" / "skill hygiene" **and** a standalone Rust CLI (`skh`).
+
+**Use when:** you have 50+ skills installed and want to prune the dead weight + resolve overlap.
+
+[Read more →](./skill-hygiene/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -99,9 +111,10 @@ cp -r skills/project-memory ~/.claude/skills/
 cp -r skills/session-to-vault ~/.claude/skills/
 cp -r skills/knowledge-bridge ~/.claude/skills/
 cp -r skills/founder-pulse ~/.claude/skills/
+cp -r skills/skill-hygiene ~/.claude/skills/
 ```
 
-### Rust CLIs (extra step for `find-skills`, `project-memory`, `knowledge-bridge`, `founder-pulse`)
+### Rust CLIs (extra step for `find-skills`, `project-memory`, `knowledge-bridge`, `founder-pulse`, `skill-hygiene`)
 
 Each skill that ships with a CLI is installed via Cargo:
 
@@ -110,9 +123,10 @@ cd skills/find-skills    && cargo install --path .
 cd ../project-memory     && cargo install --path .
 cd ../knowledge-bridge   && cargo install --path .
 cd ../founder-pulse      && cargo install --path .
+cd ../skill-hygiene      && cargo install --path .
 ```
 
-This puts `find-skills`, `pj`, `kb`, and `pulse` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
+This puts `find-skills`, `pj`, `kb`, `pulse`, and `skh` in `~/.cargo/bin/`. Make sure that directory is in your `$PATH`.
 
 Verify:
 
@@ -121,6 +135,7 @@ find-skills "tauri desktop app"   # ranked list of matching skills/plugins
 pj which                          # current project's resolved memory file
 kb status                         # unified knowledge index stats
 pulse                             # cross-project morning briefing
+skh                               # skill hygiene audit
 ```
 
 ## Requirements
@@ -134,6 +149,7 @@ pulse                             # cross-project morning briefing
 | `session-to-vault` | Requires `project-memory` installed. Optionally uses `insight-vault` if present. |
 | `knowledge-bridge` | Rust 1.70+ (for the `kb` CLI), Bash. SQLite is bundled. |
 | `founder-pulse` | Rust 1.70+ (for the `pulse` CLI), `git` in PATH. |
+| `skill-hygiene` | Rust 1.70+ (for the `skh` CLI). |
 
 ## Design principles
 
