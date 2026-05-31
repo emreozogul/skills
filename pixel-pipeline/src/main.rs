@@ -225,6 +225,24 @@ enum Cmd {
         /// Quantization bucket size (1-32, lower = finer)
         #[arg(long, default_value_t = 8)]
         bucket: u32,
+        /// Save under ~/.claude/pixel-pipeline/palettes/<name>.json so styles can use it
+        #[arg(long)]
+        save: Option<String>,
+        /// Free-text note stored with the saved palette (only with --save)
+        #[arg(long, default_value = "")]
+        note: String,
+        /// When saving, drop near-uniform background colors (e.g. grid greys) ≥ this fraction of pixels
+        #[arg(long, default_value_t = 0.20)]
+        max_dominance: f32,
+    },
+    /// Save a named palette from explicit hex codes
+    PaletteSave {
+        name: String,
+        /// Comma-separated hex codes (e.g. "0A0014,FF1493,00FFFF")
+        #[arg(long)]
+        colors: String,
+        #[arg(long, default_value = "")]
+        note: String,
     },
     /// Manage named style books (palette + prompt prefix/suffix + negative + defaults)
     Style {
@@ -489,14 +507,62 @@ const PALETTES: &[PaletteDef] = &[
     },
 ];
 
+fn palettes_custom_dir() -> PathBuf {
+    let home = std::env::var("HOME").expect("HOME not set");
+    PathBuf::from(home).join(".claude/pixel-pipeline/palettes")
+}
+
+fn load_custom_palette(name: &str) -> Option<Vec<[u8; 3]>> {
+    let p = palettes_custom_dir().join(format!("{}.json", name));
+    if !p.exists() {
+        return None;
+    }
+    let s = fs::read_to_string(&p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    let arr = v.get("colors")?.as_array()?;
+    let out: Vec<[u8; 3]> = arr
+        .iter()
+        .filter_map(|c| c.as_str())
+        .filter_map(|h| hex_to_rgb(h.trim_start_matches('#')))
+        .collect();
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 fn find_palette(name: &str) -> Option<Vec<[u8; 3]>> {
     let target = name.to_lowercase();
-    PALETTES.iter().find(|p| p.name == target).map(|p| {
-        p.colors_hex
-            .iter()
-            .filter_map(|h| hex_to_rgb(h))
-            .collect()
-    })
+    // Bundled first
+    if let Some(p) = PALETTES.iter().find(|p| p.name == target) {
+        return Some(
+            p.colors_hex
+                .iter()
+                .filter_map(|h| hex_to_rgb(h))
+                .collect(),
+        );
+    }
+    // Fall back to user-saved palette
+    load_custom_palette(&target)
+}
+
+fn save_custom_palette(name: &str, colors: &[[u8; 3]], note: &str) -> Result<PathBuf, String> {
+    let dir = palettes_custom_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("mkdir {}: {}", dir.display(), e))?;
+    let path = dir.join(format!("{}.json", name));
+    let hexes: Vec<String> = colors
+        .iter()
+        .map(|c| format!("{:02X}{:02X}{:02X}", c[0], c[1], c[2]))
+        .collect();
+    let payload = serde_json::json!({
+        "name": name,
+        "note": note,
+        "colors": hexes,
+    });
+    fs::write(&path, serde_json::to_string_pretty(&payload).unwrap())
+        .map_err(|e| format!("write: {}", e))?;
+    Ok(path)
 }
 
 fn hex_to_rgb(hex: &str) -> Option<[u8; 3]> {
@@ -606,7 +672,10 @@ fn main() {
         }
         Cmd::Clean { input, passes, output } => cmd_clean(&input, passes, output.as_deref()),
         Cmd::Preview { input, width } => cmd_preview(&input, width),
-        Cmd::PaletteFrom { input, colors, bucket } => cmd_palette_from(&input, colors, bucket),
+        Cmd::PaletteFrom { input, colors, bucket, save, note, max_dominance } => {
+            cmd_palette_from(&input, colors, bucket, save.as_deref(), &note, max_dominance)
+        }
+        Cmd::PaletteSave { name, colors, note } => cmd_palette_save_hex(&name, &colors, &note),
         Cmd::Style { cmd } => cmd_style(cmd),
         Cmd::Outline { input, color, thickness, inside, output } => {
             cmd_outline(&input, &color, thickness, inside, output.as_deref())
@@ -1671,7 +1740,14 @@ fn cmd_preview(input: &Path, max_width: u32) {
     }
 }
 
-fn cmd_palette_from(input: &Path, n_colors: u32, bucket: u32) {
+fn cmd_palette_from(
+    input: &Path,
+    n_colors: u32,
+    bucket: u32,
+    save: Option<&str>,
+    note: &str,
+    max_dominance: f32,
+) {
     let img = match image::open(input) {
         Ok(i) => i.to_rgba8(),
         Err(e) => {
@@ -1681,6 +1757,7 @@ fn cmd_palette_from(input: &Path, n_colors: u32, bucket: u32) {
     };
     let bucket = bucket.max(1).min(64);
     let (w, h) = img.dimensions();
+    let total_pixels: u64 = w as u64 * h as u64;
 
     let mut counts: std::collections::HashMap<(u8, u8, u8), u64> = std::collections::HashMap::new();
     for y in 0..h {
@@ -1689,8 +1766,6 @@ fn cmd_palette_from(input: &Path, n_colors: u32, bucket: u32) {
             if p.0[3] < 128 {
                 continue;
             }
-            // Quantize each channel into bucket-sized bins so near-identical
-            // colors fold into a single key.
             let r = (p.0[0] / bucket as u8) * bucket as u8;
             let g = (p.0[1] / bucket as u8) * bucket as u8;
             let b = (p.0[2] / bucket as u8) * bucket as u8;
@@ -1699,16 +1774,73 @@ fn cmd_palette_from(input: &Path, n_colors: u32, bucket: u32) {
     }
     let mut sorted: Vec<((u8, u8, u8), u64)> = counts.into_iter().collect();
     sorted.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // Drop colors that are too dominant (likely a background / grid). Threshold is
+    // a fraction of total pixels — anything above gets filtered when saving.
+    let dom_cap = (total_pixels as f32 * max_dominance) as u64;
+    let mut filtered: Vec<((u8, u8, u8), u64)> = if save.is_some() {
+        sorted.iter().cloned().filter(|(_, c)| *c <= dom_cap).collect()
+    } else {
+        sorted.clone()
+    };
+    filtered.truncate(n_colors as usize);
     sorted.truncate(n_colors as usize);
 
     eprintln!(
-        "Extracted {} colors from {} (bucket {})",
+        "Extracted {} colors from {} (bucket {}{})",
         sorted.len(),
         input.display(),
-        bucket
+        bucket,
+        if save.is_some() {
+            format!(", filter dominance > {:.0}%", max_dominance * 100.0)
+        } else {
+            String::new()
+        }
     );
     for ((r, g, b), count) in &sorted {
-        println!("#{:02X}{:02X}{:02X}  ({} px)", r, g, b, count);
+        let pct = (*count as f32) * 100.0 / (total_pixels as f32);
+        let flag = if *count > dom_cap { "  [dropped]" } else { "" };
+        println!("#{:02X}{:02X}{:02X}  ({} px, {:.1}%){}", r, g, b, count, pct, flag);
+    }
+
+    if let Some(name) = save {
+        let colors: Vec<[u8; 3]> = filtered.iter().map(|((r, g, b), _)| [*r, *g, *b]).collect();
+        if colors.is_empty() {
+            eprintln!("no colors survived filtering; nothing saved");
+            std::process::exit(1);
+        }
+        match save_custom_palette(name, &colors, note) {
+            Ok(path) => {
+                eprintln!();
+                eprintln!("saved {} colors as '{}' at {}", colors.len(), name, path.display());
+                eprintln!("use it: pix gen \"...\" --pixelify (style/config palette = {})", name);
+                eprintln!("or: pix style init <style> --palette {} ...", name);
+            }
+            Err(e) => {
+                eprintln!("save failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
+fn cmd_palette_save_hex(name: &str, hex_csv: &str, note: &str) {
+    let colors: Vec<[u8; 3]> = hex_csv
+        .split(',')
+        .filter_map(|h| hex_to_rgb(h.trim().trim_start_matches('#')))
+        .collect();
+    if colors.is_empty() {
+        eprintln!("no valid hex colors parsed from --colors");
+        std::process::exit(2);
+    }
+    match save_custom_palette(name, &colors, note) {
+        Ok(path) => {
+            println!("saved {} colors as '{}' at {}", colors.len(), name, path.display());
+        }
+        Err(e) => {
+            eprintln!("save failed: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 
@@ -1758,10 +1890,47 @@ fn cmd_init(name: &str, palette: &str, scale: u32, engine: &str) {
 }
 
 fn cmd_palettes() {
-    println!("{:<18}  {:>6}  {}", "NAME", "COLORS", "DESCRIPTION");
+    println!("{:<22}  {:>6}  {}", "NAME", "COLORS", "DESCRIPTION");
     println!("{}", "─".repeat(80));
     for p in PALETTES {
-        println!("{:<18}  {:>6}  {}", p.name, p.colors_hex.len(), p.note);
+        println!("{:<22}  {:>6}  {}", p.name, p.colors_hex.len(), p.note);
+    }
+    // User-saved palettes
+    let dir = palettes_custom_dir();
+    let mut custom: Vec<(String, usize, String)> = Vec::new();
+    if let Ok(rd) = fs::read_dir(&dir) {
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e != "json").unwrap_or(true) {
+                continue;
+            }
+            let stem = match path.file_stem().map(|s| s.to_string_lossy().to_string()) {
+                Some(s) => s,
+                None => continue,
+            };
+            let s = fs::read_to_string(&path).unwrap_or_default();
+            let v: serde_json::Value = serde_json::from_str(&s).unwrap_or(serde_json::Value::Null);
+            let n = v
+                .get("colors")
+                .and_then(|c| c.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            let note = v
+                .get("note")
+                .and_then(|n| n.as_str())
+                .unwrap_or("(user-saved palette)")
+                .to_string();
+            custom.push((stem, n, note));
+        }
+    }
+    if !custom.is_empty() {
+        println!();
+        println!("{:<22}  {:>6}  {}", "USER PALETTES", "COLORS", "NOTE");
+        println!("{}", "─".repeat(80));
+        custom.sort_by(|a, b| a.0.cmp(&b.0));
+        for (name, n, note) in custom {
+            println!("{:<22}  {:>6}  {}", name, n, note);
+        }
     }
 }
 
