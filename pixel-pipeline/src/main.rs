@@ -50,6 +50,22 @@ enum Cmd {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
+    /// Pixel-art-aware downscale: detects the model's block grid + area-averages → crisp small sprite.
+    /// THIS is what turns a 1024 AI pixel-art gen into a clean 64x64 game sprite (vs noisy nearest-neighbor).
+    Downscale {
+        input: PathBuf,
+        /// Target size "64x64" or "64". Omit to use --detect's native resolution.
+        #[arg(long)]
+        to: Option<String>,
+        /// Auto-detect the native pixel resolution the model drew (ignores --to)
+        #[arg(long)]
+        detect: bool,
+        /// Snap to a palette after downscale
+        #[arg(long)]
+        palette: Option<String>,
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
     /// Apply a dither + palette snap (Floyd-Steinberg or ordered Bayer)
     Dither {
         input: PathBuf,
@@ -626,6 +642,9 @@ fn main() {
         Cmd::Palette { name } => cmd_palette_show(&name),
         Cmd::Snap { input, palette, output } => cmd_snap(&input, palette.as_deref(), output.as_deref()),
         Cmd::Scale { input, to, output } => cmd_scale(&input, &to, output.as_deref()),
+        Cmd::Downscale { input, to, detect, palette, output } => {
+            cmd_downscale(&input, to.as_deref(), detect, palette.as_deref(), output.as_deref())
+        }
         Cmd::Dither { input, palette, algo, output } => cmd_dither(&input, palette.as_deref(), &algo, output.as_deref()),
         Cmd::Process { input, to, palette, algo, output } => cmd_process(&input, to.as_deref(), palette.as_deref(), &algo, output.as_deref()),
         Cmd::Pack { dir, cell, cols, output } => cmd_pack(&dir, cell.as_deref(), cols, &output),
@@ -912,6 +931,8 @@ struct PixelStyle {
     lora: String,
     #[serde(default)]
     ipadapter_ref: String,
+    #[serde(default)]
+    model: String,
 }
 
 fn style_dir() -> PathBuf {
@@ -960,6 +981,7 @@ fn cmd_style(cmd: StyleCmd) {
                 default_pipeline: "character".into(),
                 lora: "pixel-art-xl-v1.1.safetensors".into(),
                 ipadapter_ref: String::new(),
+                model: String::new(),
             };
             let json = serde_json::to_string_pretty(&style).unwrap();
             fs::write(&p, &json).expect("write style");
@@ -2193,6 +2215,194 @@ fn cmd_snap(input: &Path, palette: Option<&str>, output: Option<&Path>) {
     println!("wrote {}", out_path.display());
 }
 
+/// Detect the native pixel resolution of an AI-generated pixel-art image.
+/// The model draws "fake pixels" as N×N blocks on a big canvas. We find N by
+/// scanning candidate block counts and scoring how uniform each block is —
+/// the right grid has near-zero variance within each block.
+fn detect_native_resolution(img: &RgbaImage) -> (u32, u32) {
+    let (w, h) = img.dimensions();
+    // Candidate target dimensions (the "true" pixel count). Common pixel-art sizes.
+    let candidates: &[u32] = &[16, 24, 32, 48, 64, 96, 128, 160, 192, 256];
+
+    let score_for = |target: u32, dim: u32, horizontal: bool| -> f64 {
+        if target >= dim {
+            return f64::MAX;
+        }
+        // For each block, compute the average within-block color variance.
+        let block = dim as f64 / target as f64;
+        let mut total_var = 0.0f64;
+        let mut samples = 0u64;
+        // Sample a subset of blocks for speed
+        let step = (target / 32).max(1);
+        let mut t = 0;
+        while t < target {
+            let start = (t as f64 * block).floor() as u32;
+            let end = (((t + 1) as f64) * block).floor().min(dim as f64) as u32;
+            if end <= start {
+                t += step;
+                continue;
+            }
+            // Walk a center line through this block (the perpendicular axis at its midpoint)
+            let mid = dim / 2;
+            let mut sum = [0f64; 3];
+            let mut sum_sq = [0f64; 3];
+            let mut n = 0u64;
+            for q in start..end {
+                let p = if horizontal {
+                    img.get_pixel(q, mid)
+                } else {
+                    img.get_pixel(mid, q)
+                };
+                if p.0[3] == 0 {
+                    continue;
+                }
+                for c in 0..3 {
+                    let v = p.0[c] as f64;
+                    sum[c] += v;
+                    sum_sq[c] += v * v;
+                }
+                n += 1;
+            }
+            if n > 1 {
+                for c in 0..3 {
+                    let mean = sum[c] / n as f64;
+                    let var = (sum_sq[c] / n as f64) - mean * mean;
+                    total_var += var.max(0.0);
+                }
+                samples += 1;
+            }
+            t += step;
+        }
+        if samples == 0 {
+            return f64::MAX;
+        }
+        total_var / samples as f64
+    };
+
+    // Find the smallest candidate whose within-block variance is below a threshold —
+    // we want the coarsest grid that still cleanly separates blocks.
+    let pick = |dim: u32, horizontal: bool| -> u32 {
+        let mut best = *candidates.last().unwrap();
+        let mut best_score = f64::MAX;
+        for &c in candidates {
+            if c >= dim {
+                continue;
+            }
+            let s = score_for(c, dim, horizontal);
+            // Prefer smaller grids: weight score by how small the grid is so a slightly
+            // worse-but-much-smaller grid wins (true pixel art prefers fewer pixels).
+            let weighted = s * (1.0 + (c as f64 / dim as f64));
+            if weighted < best_score {
+                best_score = weighted;
+                best = c;
+            }
+        }
+        best
+    };
+
+    (pick(w, true), pick(h, false))
+}
+
+/// Area-averaging downscale: each output pixel = average of its source region.
+/// Far better than nearest-neighbor for AI pixel art — kills the block-misalignment noise.
+fn downscale_area(img: &RgbaImage, tw: u32, th: u32) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let mut out = RgbaImage::new(tw, th);
+    let bw = w as f64 / tw as f64;
+    let bh = h as f64 / th as f64;
+    for oy in 0..th {
+        for ox in 0..tw {
+            let x0 = (ox as f64 * bw).floor() as u32;
+            let x1 = (((ox + 1) as f64) * bw).ceil().min(w as f64) as u32;
+            let y0 = (oy as f64 * bh).floor() as u32;
+            let y1 = (((oy + 1) as f64) * bh).ceil().min(h as f64) as u32;
+            let mut sum = [0f64; 4];
+            let mut opaque_sum = [0f64; 3];
+            let mut n = 0u64;
+            let mut opaque_n = 0u64;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let p = img.get_pixel(x, y);
+                    sum[3] += p.0[3] as f64;
+                    n += 1;
+                    if p.0[3] > 0 {
+                        for c in 0..3 {
+                            opaque_sum[c] += p.0[c] as f64;
+                        }
+                        opaque_n += 1;
+                    }
+                }
+            }
+            if n == 0 {
+                out.put_pixel(ox, oy, Rgba([0, 0, 0, 0]));
+                continue;
+            }
+            let a = (sum[3] / n as f64).round() as u8;
+            // Average only opaque pixels for RGB so transparent areas don't darken edges
+            let (r, g, b) = if opaque_n > 0 {
+                (
+                    (opaque_sum[0] / opaque_n as f64).round() as u8,
+                    (opaque_sum[1] / opaque_n as f64).round() as u8,
+                    (opaque_sum[2] / opaque_n as f64).round() as u8,
+                )
+            } else {
+                (0, 0, 0)
+            };
+            out.put_pixel(ox, oy, Rgba([r, g, b, a]));
+        }
+    }
+    out
+}
+
+fn cmd_downscale(
+    input: &Path,
+    to: Option<&str>,
+    detect: bool,
+    palette: Option<&str>,
+    output: Option<&Path>,
+) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    let (tw, th) = if detect {
+        let (dw, dh) = detect_native_resolution(&img);
+        eprintln!("detected native resolution: {}x{}", dw, dh);
+        (dw, dh)
+    } else if let Some(t) = to {
+        parse_size(t)
+    } else {
+        eprintln!("specify --to WxH or --detect");
+        std::process::exit(2);
+    };
+    if tw == 0 || th == 0 {
+        eprintln!("invalid target size");
+        std::process::exit(2);
+    }
+
+    let mut result = downscale_area(&img, tw, th);
+
+    if let Some(pal_name) = palette {
+        let pal = resolve_palette(Some(pal_name));
+        result = snap_only(&result, &pal);
+    }
+
+    let out_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let parent = input.parent().unwrap_or_else(|| Path::new("."));
+        parent.join(format!("{}-{}x{}.png", stem, tw, th))
+    });
+    if let Err(e) = result.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({}x{}, area-averaged{})", out_path.display(), tw, th, if palette.is_some() { ", palette-snapped" } else { "" });
+}
+
 fn cmd_scale(input: &Path, to: &str, output: Option<&Path>) {
     let img = image::open(input).expect("open image");
     let (tw, th) = parse_size(to);
@@ -2805,6 +3015,11 @@ fn cmd_gen(args: GenArgs) {
         (Some(s), default_l) if default_l == "pixel-art-xl-v1.1.safetensors" && !s.lora.is_empty() => s.lora.clone(),
         (_, l) => l.to_string(),
     };
+    // Effective checkpoint (style overrides default if set)
+    let effective_model: String = match (&style, args.model) {
+        (Some(s), default_m) if default_m == "sd_xl_base_1.0.safetensors" && !s.model.is_empty() => s.model.clone(),
+        (_, m) => m.to_string(),
+    };
     // Effective negative
     let style_negative: Option<String> = style
         .as_ref()
@@ -2812,7 +3027,7 @@ fn cmd_gen(args: GenArgs) {
     let effective_negative: Option<String> = args.negative.map(String::from).or(style_negative);
 
     // Apply parameters via metadata (everything except prompt + seed; prompt varies per variation, seed per batch)
-    apply_param(&mut workflow, &meta, "model", serde_json::Value::String(args.model.to_string()));
+    apply_param(&mut workflow, &meta, "model", serde_json::Value::String(effective_model.clone()));
     if !effective_lora.eq_ignore_ascii_case("none") {
         apply_param(&mut workflow, &meta, "lora", serde_json::Value::String(effective_lora.clone()));
     }
@@ -2920,9 +3135,9 @@ fn cmd_gen(args: GenArgs) {
                 serde_json::to_string_pretty(error).unwrap_or_default()
             );
             eprintln!("\nCommon causes:");
-            eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", args.model);
-            if !args.lora.eq_ignore_ascii_case("none") {
-                eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/", args.lora);
+            eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", effective_model);
+            if !effective_lora.eq_ignore_ascii_case("none") {
+                eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/", effective_lora);
             }
             eprintln!("  - For ipadapter pipeline: comfyui_ipadapter_plus custom node + ip-adapter/clip_vision models");
             std::process::exit(1);
