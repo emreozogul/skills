@@ -125,12 +125,18 @@ enum Cmd {
         /// Mask image (required by `inpaint`). White = regenerate, black = preserve.
         #[arg(long)]
         mask: Option<PathBuf>,
-        /// Output PNG path (defaults to ./pix-<pipeline>-<seed>.png)
+        /// Output PNG path (defaults to ./pix-<pipeline>-<seed>.png; with --batch, suffixed -<idx>)
         #[arg(long, short)]
         output: Option<PathBuf>,
         /// After generating, run `process` to downscale + palette-snap to project config
         #[arg(long)]
         pixelify: bool,
+        /// After generating, remove a near-uniform background (sets it transparent)
+        #[arg(long)]
+        bg_remove: bool,
+        /// Generate N images (seeds = base + 0..N). Useful for picking the best from variations.
+        #[arg(long, default_value_t = 1)]
+        batch: u32,
         /// ComfyUI base URL. Empty = auto-detect (tries 8000 then 8188).
         #[arg(long, default_value = "")]
         host: String,
@@ -147,6 +153,19 @@ enum Cmd {
         /// Output mask PNG
         #[arg(long, short, default_value = "mask.png")]
         output: PathBuf,
+    },
+    /// Remove a near-uniform background (white-ish from SDXL gens). Samples corners, flood-fills from edges, sets matches to transparent.
+    BgRemove {
+        input: PathBuf,
+        /// Color distance tolerance (0-255). Higher = remove more.
+        #[arg(long, default_value_t = 30)]
+        tolerance: u32,
+        /// Override background sampling with one pixel: "X,Y"
+        #[arg(long)]
+        sample: Option<String>,
+        /// Output PNG (defaults to <stem>-cut.png)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -305,6 +324,8 @@ fn main() {
             mask,
             output,
             pixelify,
+            bg_remove,
+            batch,
             host,
         } => cmd_gen(GenArgs {
             prompt: &prompt,
@@ -322,11 +343,129 @@ fn main() {
             mask: mask.as_deref(),
             output: output.as_deref(),
             pixelify,
+            bg_remove,
+            batch,
             host: &host,
         }),
         Cmd::Pipelines => cmd_pipelines(),
         Cmd::Mask { input, rect, output } => cmd_mask(&input, &rect, &output),
+        Cmd::BgRemove { input, tolerance, sample, output } => {
+            cmd_bg_remove(&input, tolerance, sample.as_deref(), output.as_deref())
+        }
     }
+}
+
+fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, output: Option<&Path>) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+
+    // Determine bg color: either --sample X,Y or average the 4 corners
+    let bg_color: [u8; 3] = if let Some(s) = sample {
+        let parts: Vec<u32> = s.split(',').map(|p| p.trim().parse().unwrap_or(0)).collect();
+        if parts.len() != 2 {
+            eprintln!("--sample expects 'X,Y'");
+            std::process::exit(2);
+        }
+        let p = img.get_pixel(parts[0].min(w - 1), parts[1].min(h - 1));
+        [p.0[0], p.0[1], p.0[2]]
+    } else {
+        let corners = [
+            img.get_pixel(0, 0),
+            img.get_pixel(w - 1, 0),
+            img.get_pixel(0, h - 1),
+            img.get_pixel(w - 1, h - 1),
+        ];
+        let mut sum = [0u32; 3];
+        for c in &corners {
+            for k in 0..3 {
+                sum[k] += c.0[k] as u32;
+            }
+        }
+        [
+            (sum[0] / 4) as u8,
+            (sum[1] / 4) as u8,
+            (sum[2] / 4) as u8,
+        ]
+    };
+    eprintln!(
+        "Background color sample: #{:02X}{:02X}{:02X}  tolerance: {}",
+        bg_color[0], bg_color[1], bg_color[2], tolerance
+    );
+
+    // Flood-fill from every edge pixel matching bg_color within tolerance
+    let mut visited = vec![false; (w * h) as usize];
+    let mut stack: Vec<(u32, u32)> = Vec::new();
+
+    let close_enough = |p: &Rgba<u8>, bg: [u8; 3], tol: u32| -> bool {
+        let dr = (p.0[0] as i32 - bg[0] as i32).unsigned_abs();
+        let dg = (p.0[1] as i32 - bg[1] as i32).unsigned_abs();
+        let db = (p.0[2] as i32 - bg[2] as i32).unsigned_abs();
+        // L∞ / max-channel distance, simple and intuitive
+        dr.max(dg).max(db) <= tol
+    };
+
+    // Seed from edges
+    for x in 0..w {
+        stack.push((x, 0));
+        stack.push((x, h - 1));
+    }
+    for y in 0..h {
+        stack.push((0, y));
+        stack.push((w - 1, y));
+    }
+
+    let idx = |x: u32, y: u32| (y * w + x) as usize;
+    let mut transparent_count: u64 = 0;
+    let mut out = img.clone();
+
+    while let Some((x, y)) = stack.pop() {
+        let i = idx(x, y);
+        if visited[i] {
+            continue;
+        }
+        visited[i] = true;
+        let p = img.get_pixel(x, y);
+        if !close_enough(p, bg_color, tolerance) {
+            continue;
+        }
+        out.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+        transparent_count += 1;
+        // Push 4-connected neighbors
+        if x > 0 { stack.push((x - 1, y)); }
+        if x + 1 < w { stack.push((x + 1, y)); }
+        if y > 0 { stack.push((x, y - 1)); }
+        if y + 1 < h { stack.push((x, y + 1)); }
+    }
+
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| {
+            let stem = input
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let parent = input.parent().unwrap_or_else(|| Path::new("."));
+            parent.join(format!("{}-cut.png", stem))
+        });
+    if let Err(e) = out.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    let pct = (transparent_count as f64) * 100.0 / ((w as u64 * h as u64) as f64);
+    println!(
+        "wrote {} ({}x{}, {} px transparent = {:.1}%)",
+        out_path.display(),
+        w,
+        h,
+        transparent_count,
+        pct
+    );
 }
 
 fn cmd_mask(input: &Path, rect_str: &str, output: &Path) {
@@ -384,6 +523,8 @@ struct GenArgs<'a> {
     mask: Option<&'a Path>,
     output: Option<&'a Path>,
     pixelify: bool,
+    bg_remove: bool,
+    batch: u32,
     host: &'a str,
 }
 
@@ -1071,9 +1212,9 @@ fn cmd_gen(args: GenArgs) {
     let steps = args.steps.unwrap_or(default_steps);
     let cfg = args.cfg.unwrap_or(default_cfg);
     let denoise = args.denoise.unwrap_or(default_denoise);
-    let actual_seed = args.seed.unwrap_or_else(random_seed);
+    let base_seed = args.seed.unwrap_or_else(random_seed);
 
-    // Apply parameters via metadata
+    // Apply parameters via metadata (everything except seed; seed varies per batch iteration)
     apply_param(&mut workflow, &meta, "model", serde_json::Value::String(args.model.to_string()));
     if !args.lora.eq_ignore_ascii_case("none") {
         apply_param(&mut workflow, &meta, "lora", serde_json::Value::String(args.lora.to_string()));
@@ -1082,15 +1223,13 @@ fn cmd_gen(args: GenArgs) {
     if let Some(n) = args.negative {
         apply_param(&mut workflow, &meta, "negative", serde_json::Value::String(n.to_string()));
     }
-    apply_param(&mut workflow, &meta, "seed", serde_json::json!(actual_seed));
     apply_param(&mut workflow, &meta, "steps", serde_json::json!(steps));
     apply_param(&mut workflow, &meta, "cfg", serde_json::json!(cfg));
     apply_param(&mut workflow, &meta, "width", serde_json::json!(w));
     apply_param(&mut workflow, &meta, "height", serde_json::json!(h));
-    // denoise only applies if the pipeline declares it (img2img / inpaint)
     apply_param(&mut workflow, &meta, "denoise", serde_json::json!(denoise));
 
-    // Strip _meta keys before sending
+    // Strip _meta keys once
     if let Some(map) = workflow.as_object_mut() {
         map.remove("_meta");
         for (_, v) in map.iter_mut() {
@@ -1100,154 +1239,201 @@ fn cmd_gen(args: GenArgs) {
         }
     }
 
-    // Submit
-    let body = serde_json::json!({ "prompt": workflow }).to_string();
-    let url = format!("{}/prompt", host.trim_end_matches('/'));
-    let response = match curl_post_json(&url, &body) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("submit failed: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let batch_n = args.batch.max(1);
+    let base_out_path = args
+        .output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(format!("pix-{}-{}.png", args.pipeline, base_seed)));
 
-    let parsed: serde_json::Value = match serde_json::from_str(&response) {
-        Ok(v) => v,
-        Err(_) => {
-            eprintln!("ComfyUI returned non-JSON response:\n{}", response);
-            std::process::exit(1);
-        }
-    };
+    for idx in 0..batch_n {
+        let actual_seed = base_seed.wrapping_add(idx as u64);
+        let mut w_iter = workflow.clone();
+        apply_param(&mut w_iter, &meta, "seed", serde_json::json!(actual_seed));
 
-    // ComfyUI returns node_errors and error fields that may be empty objects/null on success.
-    // Only treat them as failure when they are non-empty.
-    let is_nonempty = |v: &serde_json::Value| -> bool {
-        match v {
-            serde_json::Value::Null => false,
-            serde_json::Value::String(s) => !s.is_empty(),
-            serde_json::Value::Object(m) => !m.is_empty(),
-            serde_json::Value::Array(a) => !a.is_empty(),
-            _ => true,
-        }
-    };
-    let real_error = parsed
-        .get("error")
-        .filter(|v| is_nonempty(v))
-        .or_else(|| parsed.get("node_errors").filter(|v| is_nonempty(v)));
-    if let Some(error) = real_error {
-        eprintln!("ComfyUI rejected the workflow:\n{}", serde_json::to_string_pretty(error).unwrap_or_default());
-        eprintln!("\nCommon causes:");
-        eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", args.model);
-        if !args.lora.eq_ignore_ascii_case("none") {
-            eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/", args.lora);
-        }
-        std::process::exit(1);
-    }
-
-    let prompt_id = match parsed.get("prompt_id").and_then(|v| v.as_str()) {
-        Some(s) => s.to_string(),
-        None => {
-            eprintln!("No prompt_id in response: {}", response);
-            std::process::exit(1);
-        }
-    };
-
-    eprintln!("Queued prompt {} — generating {}x{} ({} steps, seed {})...", prompt_id, w, h, steps, actual_seed);
-
-    // Poll
-    let history_url = format!("{}/history/{}", host.trim_end_matches('/'), prompt_id);
-    let start = std::time::Instant::now();
-    let timeout_secs = 300; // 5 min
-    let mut filename: Option<String> = None;
-    let mut subfolder: String = String::new();
-    let mut last_print = std::time::Instant::now();
-
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(1500));
-        if start.elapsed().as_secs() > timeout_secs {
-            eprintln!("Timed out waiting for generation after {}s.", timeout_secs);
-            std::process::exit(1);
-        }
-        if last_print.elapsed().as_secs() >= 5 {
-            eprint!(".");
-            last_print = std::time::Instant::now();
-        }
-        let body = match curl_get(&history_url) {
+        // Submit
+        let body = serde_json::json!({ "prompt": w_iter }).to_string();
+        let url = format!("{}/prompt", host.trim_end_matches('/'));
+        let response = match curl_post_json(&url, &body) {
             Ok(s) => s,
-            Err(_) => continue,
+            Err(e) => {
+                eprintln!("submit failed: {}", e);
+                std::process::exit(1);
+            }
         };
-        if body.trim().is_empty() {
-            continue;
-        }
-        let h: serde_json::Value = match serde_json::from_str(&body) {
+        let parsed: serde_json::Value = match serde_json::from_str(&response) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => {
+                eprintln!("ComfyUI returned non-JSON response:\n{}", response);
+                std::process::exit(1);
+            }
         };
-        let entry = match h.get(&prompt_id) {
-            Some(e) => e,
-            None => continue,
+        let is_nonempty = |v: &serde_json::Value| -> bool {
+            match v {
+                serde_json::Value::Null => false,
+                serde_json::Value::String(s) => !s.is_empty(),
+                serde_json::Value::Object(m) => !m.is_empty(),
+                serde_json::Value::Array(a) => !a.is_empty(),
+                _ => true,
+            }
         };
-        // Walk outputs to find a saved image
-        if let Some(outputs) = entry.get("outputs").and_then(|v| v.as_object()) {
-            for (_node_id, node_out) in outputs.iter() {
-                if let Some(images) = node_out.get("images").and_then(|v| v.as_array()) {
-                    if let Some(first) = images.first() {
-                        let fn_ = first.get("filename").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let sf = first.get("subfolder").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        if !fn_.is_empty() {
-                            filename = Some(fn_);
-                            subfolder = sf;
-                            break;
+        let real_error = parsed
+            .get("error")
+            .filter(|v| is_nonempty(v))
+            .or_else(|| parsed.get("node_errors").filter(|v| is_nonempty(v)));
+        if let Some(error) = real_error {
+            eprintln!(
+                "ComfyUI rejected the workflow:\n{}",
+                serde_json::to_string_pretty(error).unwrap_or_default()
+            );
+            eprintln!("\nCommon causes:");
+            eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", args.model);
+            if !args.lora.eq_ignore_ascii_case("none") {
+                eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/", args.lora);
+            }
+            eprintln!("  - For ipadapter pipeline: comfyui_ipadapter_plus custom node + ip-adapter/clip_vision models");
+            std::process::exit(1);
+        }
+        let prompt_id = match parsed.get("prompt_id").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => {
+                eprintln!("No prompt_id in response: {}", response);
+                std::process::exit(1);
+            }
+        };
+        eprintln!(
+            "[{}/{}] Queued {} — {}x{} seed {}...",
+            idx + 1,
+            batch_n,
+            prompt_id,
+            w,
+            h,
+            actual_seed
+        );
+
+        // Poll
+        let history_url = format!("{}/history/{}", host.trim_end_matches('/'), prompt_id);
+        let start = std::time::Instant::now();
+        let timeout_secs = 300;
+        let mut filename: Option<String> = None;
+        let mut subfolder: String = String::new();
+        let mut last_print = std::time::Instant::now();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            if start.elapsed().as_secs() > timeout_secs {
+                eprintln!("Timed out waiting for generation after {}s.", timeout_secs);
+                std::process::exit(1);
+            }
+            if last_print.elapsed().as_secs() >= 5 {
+                eprint!(".");
+                last_print = std::time::Instant::now();
+            }
+            let body = match curl_get(&history_url) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if body.trim().is_empty() {
+                continue;
+            }
+            let h_resp: serde_json::Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let entry = match h_resp.get(&prompt_id) {
+                Some(e) => e,
+                None => continue,
+            };
+            if let Some(outputs) = entry.get("outputs").and_then(|v| v.as_object()) {
+                for (_, node_out) in outputs.iter() {
+                    if let Some(images) = node_out.get("images").and_then(|v| v.as_array()) {
+                        if let Some(first) = images.first() {
+                            let fn_ = first
+                                .get("filename")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let sf = first
+                                .get("subfolder")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if !fn_.is_empty() {
+                                filename = Some(fn_);
+                                subfolder = sf;
+                                break;
+                            }
                         }
                     }
                 }
             }
-        }
-        if filename.is_some() {
-            break;
-        }
-    }
-    let filename = filename.unwrap();
-    eprintln!("\nGenerated: {} (subfolder: {:?})", filename, subfolder);
-
-    // Download
-    let view_url = format!(
-        "{}/view?filename={}&subfolder={}&type=output",
-        host.trim_end_matches('/'),
-        urlencode(&filename),
-        urlencode(&subfolder)
-    );
-    let out_path = args
-        .output
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from(format!("pix-{}-{}.png", args.pipeline, actual_seed)));
-    if let Err(e) = curl_download(&view_url, &out_path) {
-        eprintln!("download: {}", e);
-        std::process::exit(1);
-    }
-    println!("wrote {} ({}x{}, seed {})", out_path.display(), w, h, actual_seed);
-
-    // Optional pixelify pass
-    if args.pixelify {
-        let cfg = read_config();
-        let scale = cfg.as_ref().map(|c| c.scale).unwrap_or(64);
-        let palette = cfg.as_ref().map(|c| c.palette.clone()).unwrap_or_else(|| "endesga-32".to_string());
-        let pal_vec = resolve_palette(Some(&palette));
-        let img = match image::open(&out_path) {
-            Ok(i) => i.to_rgba8(),
-            Err(e) => {
-                eprintln!("could not open generated image for pixelify: {}", e);
-                return;
+            if filename.is_some() {
+                break;
             }
-        };
-        let resized = image::imageops::resize(&img, scale, scale, FilterType::Nearest);
-        let result = floyd_steinberg(&resized, &pal_vec);
-        let pix_path = out_path.with_extension("pix.png");
-        if let Err(e) = result.save(&pix_path) {
-            eprintln!("save pixelified: {}", e);
-            return;
         }
-        println!("wrote {} (downscaled to {}x{}, palette {})", pix_path.display(), scale, scale, palette);
+        let filename = filename.unwrap();
+        eprintln!();
+
+        // Download to per-iteration path
+        let view_url = format!(
+            "{}/view?filename={}&subfolder={}&type=output",
+            host.trim_end_matches('/'),
+            urlencode(&filename),
+            urlencode(&subfolder)
+        );
+        let out_path = if batch_n > 1 {
+            let stem = base_out_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "pix".to_string());
+            let parent = base_out_path.parent().unwrap_or_else(|| Path::new("."));
+            parent.join(format!("{}-{}.png", stem, idx))
+        } else {
+            base_out_path.clone()
+        };
+        if let Err(e) = curl_download(&view_url, &out_path) {
+            eprintln!("download: {}", e);
+            std::process::exit(1);
+        }
+        println!("wrote {} (seed {})", out_path.display(), actual_seed);
+
+        // Optional bg-remove pass (runs BEFORE pixelify so palette quantization sees clean alpha)
+        let post_bg_path = if args.bg_remove {
+            cmd_bg_remove(&out_path, 30, None, Some(&out_path));
+            out_path.clone()
+        } else {
+            out_path.clone()
+        };
+
+        // Optional pixelify pass
+        if args.pixelify {
+            let cfg = read_config();
+            let scale = cfg.as_ref().map(|c| c.scale).unwrap_or(64);
+            let palette = cfg
+                .as_ref()
+                .map(|c| c.palette.clone())
+                .unwrap_or_else(|| "endesga-32".to_string());
+            let pal_vec = resolve_palette(Some(&palette));
+            let img = match image::open(&post_bg_path) {
+                Ok(i) => i.to_rgba8(),
+                Err(e) => {
+                    eprintln!("could not open generated image for pixelify: {}", e);
+                    continue;
+                }
+            };
+            let resized = image::imageops::resize(&img, scale, scale, FilterType::Nearest);
+            let result = floyd_steinberg(&resized, &pal_vec);
+            let pix_path = post_bg_path.with_extension("pix.png");
+            if let Err(e) = result.save(&pix_path) {
+                eprintln!("save pixelified: {}", e);
+                continue;
+            }
+            println!(
+                "wrote {} (downscaled to {}x{}, palette {})",
+                pix_path.display(),
+                scale,
+                scale,
+                palette
+            );
+        }
     }
 }
 

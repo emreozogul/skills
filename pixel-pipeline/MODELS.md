@@ -99,3 +99,87 @@ First run will be slow (~30-60s) because ComfyUI is loading the 6.5 GB checkpoin
   - Checkpoint: `v1-5-pruned-emaonly.safetensors` (~4 GB)
   - LoRA: any SD 1.5 pixel-art LoRA from Civitai
   - You'll need to adapt the workflow JSON (SD 1.5 doesn't have the same conditioning structure) — easiest: download a known-good SD 1.5 workflow template from a tutorial and replace the bundled one.
+
+---
+
+# IP-Adapter (optional, for `pix gen --pipeline ipadapter`)
+
+IP-Adapter unlocks **character consistency**: pass a reference sprite with `--from` and the output keeps the reference's identity (face, palette, proportions) while applying the new prompt. Critical for animation cycles where every frame must look like the SAME character.
+
+Without IP-Adapter, `--pipeline vary` is your best alternative — it preserves rough structure but the character drifts frame-to-frame.
+
+## Setup (one-time, ~3 GB total)
+
+### Step 1 — Install the custom node
+
+ComfyUI has a built-in package manager. In the ComfyUI Desktop UI:
+
+1. Click the **Manager** button (top-right; if missing, restart ComfyUI)
+2. Click **Install Custom Nodes**
+3. Search for `ComfyUI_IPAdapter_plus`
+4. Click **Install** on `comfyui_ipadapter_plus` by **cubiq**
+5. Click **Restart** when prompted
+
+Verify by reloading the ComfyUI page — if the install worked you'll see new `IPAdapter*` node types when you right-click → Add Node.
+
+### Step 2 — Download the IP-Adapter model (~700 MB)
+
+Place in `~/Documents/ComfyUI/models/ipadapter/` (create the dir if it doesn't exist):
+
+```bash
+mkdir -p ~/Documents/ComfyUI/models/ipadapter
+curl -L -o ~/Documents/ComfyUI/models/ipadapter/ip-adapter-plus_sdxl_vit-h.safetensors \
+  "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors?download=true"
+```
+
+### Step 3 — Download the CLIP-Vision model (~2.5 GB)
+
+Place in `~/Documents/ComfyUI/models/clip_vision/`:
+
+```bash
+mkdir -p ~/Documents/ComfyUI/models/clip_vision
+curl -L -o ~/Documents/ComfyUI/models/clip_vision/CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors \
+  "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors?download=true"
+```
+
+### Step 4 — Test
+
+```bash
+# Generate a base character
+pix gen "pixel art knight, fantasy stance" --seed 42 --output ref-knight.png
+
+# Now use IP-Adapter to generate variations that LOOK LIKE the same knight
+pix gen "pixel art knight, attacking pose" --pipeline ipadapter --from ref-knight.png --seed 100
+pix gen "pixel art knight, walking right" --pipeline ipadapter --from ref-knight.png --seed 200
+pix gen "pixel art knight, jumping"       --pipeline ipadapter --from ref-knight.png --seed 300
+```
+
+Each output should keep the reference knight's face/armor/colors while changing the pose.
+
+## Troubleshooting
+
+**"Node 'IPAdapterAdvanced' not found"**
+→ Custom node not installed. Redo Step 1, restart ComfyUI.
+
+**"Failed to load CLIP-Vision"**
+→ Filename mismatch. Some setups expect `clip_vision/clip-vit-h-14-laion2b-s32b-b79k.safetensors` (lowercase) or symlinked. Check ComfyUI logs; rename if needed.
+
+**Output ignores reference**
+→ Lower the prompt strength or raise the IP-Adapter weight in the workflow (edit `workflows/ipadapter.json`, node "14", `weight` field — try 0.95).
+
+**Output ignores prompt entirely**
+→ Reference is dominating. Lower `weight` to 0.6 or use `weight_type: "ease in-out"`.
+
+## Tuning the IP-Adapter weight
+
+The `weight` parameter in `workflows/ipadapter.json` node 14 controls the trade-off:
+
+| Weight | Effect |
+|---|---|
+| 0.3-0.5 | Loose inspiration — picks up colors/style but lots of room for the prompt |
+| 0.6-0.8 | Balanced — same character, different pose |
+| 0.85-0.95 | Strict identity lock — useful for animation frames |
+| 1.0+ | Reference dominates — prompt nearly ignored |
+
+For consistent animation cycles: 0.85 is the sweet spot.
+

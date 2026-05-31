@@ -1,0 +1,58 @@
+{
+  "_meta": {
+    "name": "ipadapter",
+    "description": "Character/style consistency via IP-Adapter. Pass a reference sprite with --from; output keeps the reference's IDENTITY (face, palette, proportions) while applying the new prompt. Critical for animation cycles where every frame must be the SAME character. REQUIRES: comfyui_ipadapter_plus custom node + IP-Adapter SDXL + CLIP-Vision models — see MODELS.md.",
+    "params": {
+      "prompt":   { "node": "6",  "input": "text" },
+      "negative": { "node": "7",  "input": "text" },
+      "seed":     { "node": "3",  "input": "seed" },
+      "steps":    { "node": "3",  "input": "steps" },
+      "cfg":      { "node": "3",  "input": "cfg" },
+      "width":    { "node": "5",  "input": "width" },
+      "height":   { "node": "5",  "input": "height" },
+      "model":    { "node": "4",  "input": "ckpt_name" },
+      "lora":     { "node": "10", "input": "lora_name" },
+      "image":    { "node": "11", "input": "image" }
+    },
+    "requires_image": true,
+    "defaults": { "size": "1024x1024", "steps": 25, "cfg": 7.5 },
+    "extra_models_required": {
+      "ipadapter": "ip-adapter-plus_sdxl_vit-h.safetensors  (~700 MB → ComfyUI/models/ipadapter/)",
+      "clip_vision": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors  (~2.5 GB → ComfyUI/models/clip_vision/)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "seed": 42, "steps": 25, "cfg": 7.5,
+      "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+      "model": ["14", 0], "positive": ["6", 0], "negative": ["7", 0],
+      "latent_image": ["5", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "4": { "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }, "class_type": "CheckpointLoaderSimple" },
+  "5": { "inputs": { "width": 1024, "height": 1024, "batch_size": 1 }, "class_type": "EmptyLatentImage" },
+  "6": { "inputs": { "text": "pixel art, retro 16-bit, clean linework, vibrant palette, white background, no anti-aliasing", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "7": { "inputs": { "text": "blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, jpeg artifacts, watermark", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "8": { "inputs": { "samples": ["3", 0], "vae": ["4", 2] }, "class_type": "VAEDecode" },
+  "9": { "inputs": { "filename_prefix": "pix-ipadapter", "images": ["8", 0] }, "class_type": "SaveImage" },
+  "10": { "inputs": { "lora_name": "pixel-art-xl-v1.1.safetensors", "strength_model": 1.0, "strength_clip": 1.0, "model": ["4", 0], "clip": ["4", 1] }, "class_type": "LoraLoader" },
+  "11": { "inputs": { "image": "PLACEHOLDER.png", "upload": "image" }, "class_type": "LoadImage" },
+  "12": { "inputs": { "ipadapter_file": "ip-adapter-plus_sdxl_vit-h.safetensors" }, "class_type": "IPAdapterModelLoader" },
+  "13": { "inputs": { "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors" }, "class_type": "CLIPVisionLoader" },
+  "14": {
+    "inputs": {
+      "model": ["10", 0],
+      "ipadapter": ["12", 0],
+      "image": ["11", 0],
+      "clip_vision": ["13", 0],
+      "weight": 0.85,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 1.0,
+      "embeds_scaling": "V only"
+    },
+    "class_type": "IPAdapterAdvanced"
+  }
+}
