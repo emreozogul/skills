@@ -108,6 +108,18 @@ Pure shell (no Rust binary) — composes with `find-skills`. Optional logging to
 
 ---
 
+### [`pixel-pipeline/`](./pixel-pipeline) — End-to-end pixel art workflow for game projects
+
+Palette setup, image-to-pixel conversion (Floyd-Steinberg / Bayer / palette snap), multi-frame animation scaffolding via Aseprite Lua scripts, spritesheet packing for Godot/Unity. Bundles 8 well-known palettes (Endesga-32, Dawnbringer-32, Resurrect-64, AAP-64, Pico-8, NES, GameBoy, 1-bit).
+
+Ships as **both** a Skill Claude invokes on sprite / pixel art / Aseprite / animation requests **and** a standalone Rust CLI (`pix`) + Aseprite Lua scripts. Composes with the `aseprite-mcp-pro` MCP.
+
+**Use when:** building pixel-art assets for a game — sprite generation, walk/idle/attack animations, image-to-pixel conversion, spritesheet packing.
+
+[Read more →](./pixel-pipeline/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -126,6 +138,7 @@ cp -r skills/founder-pulse ~/.claude/skills/
 cp -r skills/skill-hygiene ~/.claude/skills/
 cp -r skills/dogfood-router ~/.claude/skills/
 chmod +x ~/.claude/skills/dogfood-router/dogfood-router.sh
+cp -r skills/pixel-pipeline ~/.claude/skills/
 ```
 
 After copying `dogfood-router`, wire it into your `~/.claude/settings.json` to activate (see [dogfood-router/README.md](./dogfood-router/README.md) for the JSON snippet).
@@ -167,6 +180,7 @@ skh                               # skill hygiene audit
 | `founder-pulse` | Rust 1.70+ (for the `pulse` CLI), `git` in PATH. |
 | `skill-hygiene` | Rust 1.70+ (for the `skh` CLI). |
 | `dogfood-router` | Bash, `python3`, and `find-skills` in PATH. No Rust needed. |
+| `pixel-pipeline` | Rust 1.70+ (for the `pix` CLI). Aseprite + `aseprite-mcp-pro` MCP recommended for full workflow. |
 
 ## Design principles
 
