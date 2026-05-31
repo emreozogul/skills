@@ -96,6 +96,18 @@ Ships as **both** a Skill Claude invokes on "audit my skills" / "what's redundan
 
 ---
 
+### [`dogfood-router/`](./dogfood-router) — Proactive skill suggestions via UserPromptSubmit hook
+
+A bash hook script that runs `find-skills` on every user prompt, filters by score threshold, and surfaces top matches as a context hint Claude sees before responding. Closes the loop on `find-skills` — turns the reactive router into a proactive one.
+
+Pure shell (no Rust binary) — composes with `find-skills`. Optional logging to `~/.claude/dogfood-router/log.jsonl` for future "you ignored this N times" tracking.
+
+**Use when:** you've installed find-skills but Claude isn't using your skills as much as you'd like.
+
+[Read more →](./dogfood-router/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -112,7 +124,11 @@ cp -r skills/session-to-vault ~/.claude/skills/
 cp -r skills/knowledge-bridge ~/.claude/skills/
 cp -r skills/founder-pulse ~/.claude/skills/
 cp -r skills/skill-hygiene ~/.claude/skills/
+cp -r skills/dogfood-router ~/.claude/skills/
+chmod +x ~/.claude/skills/dogfood-router/dogfood-router.sh
 ```
+
+After copying `dogfood-router`, wire it into your `~/.claude/settings.json` to activate (see [dogfood-router/README.md](./dogfood-router/README.md) for the JSON snippet).
 
 ### Rust CLIs (extra step for `find-skills`, `project-memory`, `knowledge-bridge`, `founder-pulse`, `skill-hygiene`)
 
@@ -150,6 +166,7 @@ skh                               # skill hygiene audit
 | `knowledge-bridge` | Rust 1.70+ (for the `kb` CLI), Bash. SQLite is bundled. |
 | `founder-pulse` | Rust 1.70+ (for the `pulse` CLI), `git` in PATH. |
 | `skill-hygiene` | Rust 1.70+ (for the `skh` CLI). |
+| `dogfood-router` | Bash, `python3`, and `find-skills` in PATH. No Rust needed. |
 
 ## Design principles
 
