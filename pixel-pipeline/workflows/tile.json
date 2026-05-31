@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "name": "tile",
+    "description": "Generate pixel-art terrain/floor/wall TILE textures. Biases the prompt toward seamless-ish low-frequency patterns (grass, stone, dirt, sand, brick). Defaults to 512x512 for tighter texture cohesion. NOT truly seamless (would need a custom sampler) — for that, run the output through a seam-blender or use --pipeline tile + img2img passes.",
+    "params": {
+      "prompt":   { "node": "6",  "input": "text" },
+      "negative": { "node": "7",  "input": "text" },
+      "seed":     { "node": "3",  "input": "seed" },
+      "steps":    { "node": "3",  "input": "steps" },
+      "cfg":      { "node": "3",  "input": "cfg" },
+      "width":    { "node": "5",  "input": "width" },
+      "height":   { "node": "5",  "input": "height" },
+      "model":    { "node": "4",  "input": "ckpt_name" },
+      "lora":     { "node": "10", "input": "lora_name" }
+    },
+    "defaults": { "size": "512x512", "steps": 25, "cfg": 6.5 }
+  },
+  "3": {
+    "inputs": {
+      "seed": 42, "steps": 25, "cfg": 6.5,
+      "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0,
+      "model": ["10", 0], "positive": ["6", 0], "negative": ["7", 0],
+      "latent_image": ["5", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "4": { "inputs": { "ckpt_name": "sd_xl_base_1.0.safetensors" }, "class_type": "CheckpointLoaderSimple" },
+  "5": { "inputs": { "width": 512, "height": 512, "batch_size": 1 }, "class_type": "EmptyLatentImage" },
+  "6": { "inputs": { "text": "pixel art texture, seamless tileable repeating pattern, top-down view, isolated, no shadow, no perspective, flat lighting, no subject", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "7": { "inputs": { "text": "character, person, animal, object, perspective, shadow, vignette, 3d, photographic, blurry, soft edges, frame, border", "clip": ["10", 1] }, "class_type": "CLIPTextEncode" },
+  "8": { "inputs": { "samples": ["3", 0], "vae": ["4", 2] }, "class_type": "VAEDecode" },
+  "9": { "inputs": { "filename_prefix": "pix-tile", "images": ["8", 0] }, "class_type": "SaveImage" },
+  "10": { "inputs": { "lora_name": "pixel-art-xl-v1.1.safetensors", "strength_model": 0.85, "strength_clip": 0.85, "model": ["4", 0], "clip": ["4", 1] }, "class_type": "LoraLoader" }
+}

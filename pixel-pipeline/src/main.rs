@@ -140,6 +140,12 @@ enum Cmd {
         /// After --batch, pack all outputs into a spritesheet PNG + JSON metadata. Implies --bg-remove + --pixelify.
         #[arg(long)]
         pack: bool,
+        /// Generate one image per comma-separated suffix appended to the prompt. Same seed → similar composition. E.g. "oak,pine,birch,dead"
+        #[arg(long)]
+        variations: Option<String>,
+        /// Apply a named style (palette + prompt prefix/suffix + negative + LoRA). See `pix style list`.
+        #[arg(long)]
+        style: Option<String>,
         /// ComfyUI base URL. Empty = auto-detect (tries 8000 then 8188).
         #[arg(long, default_value = "")]
         host: String,
@@ -162,6 +168,12 @@ enum Cmd {
         /// Polygon as X1,Y1,X2,Y2,...,Xn,Yn (closed automatically)
         #[arg(long)]
         polygon: Option<String>,
+        /// Auto-detect edges via Sobel and use as mask (silhouette + interior outlines)
+        #[arg(long)]
+        auto_edges: bool,
+        /// Sobel edge threshold (0-255). Higher = stricter, fewer edges.
+        #[arg(long, default_value_t = 60)]
+        edge_threshold: u32,
         /// Grow the mask outward by N pixels (dilation)
         #[arg(long, default_value_t = 0)]
         grow: u32,
@@ -181,6 +193,9 @@ enum Cmd {
         /// Override background sampling with one pixel: "X,Y"
         #[arg(long)]
         sample: Option<String>,
+        /// Soften alpha edges by N pixels (anti-aliased ring on boundary)
+        #[arg(long, default_value_t = 0)]
+        feather: u32,
         /// Output PNG (defaults to <stem>-cut.png)
         #[arg(long, short)]
         output: Option<PathBuf>,
@@ -211,6 +226,56 @@ enum Cmd {
         #[arg(long, default_value_t = 8)]
         bucket: u32,
     },
+    /// Manage named style books (palette + prompt prefix/suffix + negative + defaults)
+    Style {
+        #[command(subcommand)]
+        cmd: StyleCmd,
+    },
+    /// Add a pixel-perfect 1px outline around the non-transparent silhouette of a sprite
+    Outline {
+        input: PathBuf,
+        /// Outline color (hex, e.g. 000000)
+        #[arg(long, default_value = "000000")]
+        color: String,
+        /// Thickness (px) — multiple passes for thicker outlines
+        #[arg(long, default_value_t = 1)]
+        thickness: u32,
+        /// Outline grows INWARD (eats into the sprite) instead of outward
+        #[arg(long)]
+        inside: bool,
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+    /// Recolor a sprite by swapping colors (e.g. red knight from a silver one)
+    Recolor {
+        input: PathBuf,
+        /// Swaps as "FROM:TO,FROM:TO,..." (hex, no #). Example: "C0C0C0:FF0000,808080:CC0000"
+        #[arg(long)]
+        swap: String,
+        /// Color distance tolerance per swap
+        #[arg(long, default_value_t = 20)]
+        tolerance: u32,
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum StyleCmd {
+    /// Initialize a new style file at ~/.claude/pixel-pipeline/styles/<name>.json
+    Init {
+        name: String,
+        #[arg(long, default_value = "endesga-32")]
+        palette: String,
+        #[arg(long, default_value_t = 64)]
+        scale: u32,
+    },
+    /// List all available styles
+    List,
+    /// Show a style's contents
+    Show { name: String },
+    /// Print the absolute path to a style file (for editing)
+    Path { name: String },
 }
 
 // ===================== PALETTES =====================
@@ -371,6 +436,8 @@ fn main() {
             bg_remove,
             batch,
             pack,
+            variations,
+            style,
             host,
         } => cmd_gen(GenArgs {
             prompt: &prompt,
@@ -391,27 +458,38 @@ fn main() {
             bg_remove: bg_remove || pack,
             batch,
             pack,
+            variations: variations.as_deref(),
+            style: style.as_deref(),
             host: &host,
         }),
         Cmd::Pipelines => cmd_pipelines(),
-        Cmd::Mask { input, rect, circle, ellipse, polygon, grow, invert, output } => {
+        Cmd::Mask { input, rect, circle, ellipse, polygon, auto_edges, edge_threshold, grow, invert, output } => {
             cmd_mask(MaskArgs {
                 input: &input,
                 rect: rect.as_deref(),
                 circle: circle.as_deref(),
                 ellipse: ellipse.as_deref(),
                 polygon: polygon.as_deref(),
+                auto_edges,
+                edge_threshold,
                 grow,
                 invert,
                 output: &output,
             })
         }
-        Cmd::BgRemove { input, tolerance, sample, output } => {
-            cmd_bg_remove(&input, tolerance, sample.as_deref(), output.as_deref())
+        Cmd::BgRemove { input, tolerance, sample, feather, output } => {
+            cmd_bg_remove(&input, tolerance, sample.as_deref(), feather, output.as_deref())
         }
         Cmd::Clean { input, passes, output } => cmd_clean(&input, passes, output.as_deref()),
         Cmd::Preview { input, width } => cmd_preview(&input, width),
         Cmd::PaletteFrom { input, colors, bucket } => cmd_palette_from(&input, colors, bucket),
+        Cmd::Style { cmd } => cmd_style(cmd),
+        Cmd::Outline { input, color, thickness, inside, output } => {
+            cmd_outline(&input, &color, thickness, inside, output.as_deref())
+        }
+        Cmd::Recolor { input, swap, tolerance, output } => {
+            cmd_recolor(&input, &swap, tolerance, output.as_deref())
+        }
     }
 }
 
@@ -421,12 +499,14 @@ struct MaskArgs<'a> {
     circle: Option<&'a str>,
     ellipse: Option<&'a str>,
     polygon: Option<&'a str>,
+    auto_edges: bool,
+    edge_threshold: u32,
     grow: u32,
     invert: bool,
     output: &'a Path,
 }
 
-fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, output: Option<&Path>) {
+fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, feather: u32, output: Option<&Path>) {
     let img = match image::open(input) {
         Ok(i) => i.to_rgba8(),
         Err(e) => {
@@ -514,6 +594,11 @@ fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, output: Opt
         if y + 1 < h { stack.push((x, y + 1)); }
     }
 
+    // Optional feather — soften alpha at the edges (anti-aliased boundary ring).
+    if feather > 0 {
+        out = feather_alpha(&out, feather);
+    }
+
     let out_path = output
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| {
@@ -530,13 +615,319 @@ fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, output: Opt
     }
     let pct = (transparent_count as f64) * 100.0 / ((w as u64 * h as u64) as f64);
     println!(
-        "wrote {} ({}x{}, {} px transparent = {:.1}%)",
+        "wrote {} ({}x{}, {} px transparent = {:.1}%{})",
         out_path.display(),
         w,
         h,
         transparent_count,
-        pct
+        pct,
+        if feather > 0 { format!(", feathered {}px", feather) } else { String::new() },
     );
+}
+
+fn feather_alpha(img: &RgbaImage, radius: u32) -> RgbaImage {
+    // For each opaque pixel near a transparent neighbor, gradually reduce alpha
+    // based on distance to the nearest transparent pixel within `radius`.
+    let (w, h) = img.dimensions();
+    let mut out = img.clone();
+    let r = radius as i32;
+    for y in 0..h {
+        for x in 0..w {
+            let p = img.get_pixel(x, y);
+            if p.0[3] == 0 {
+                continue;
+            }
+            // Find min distance to any transparent pixel within radius
+            let xi = x as i32;
+            let yi = y as i32;
+            let x_min = (xi - r).max(0) as u32;
+            let x_max = ((xi + r) as u32).min(w - 1);
+            let y_min = (yi - r).max(0) as u32;
+            let y_max = ((yi + r) as u32).min(h - 1);
+            let mut min_d: i32 = r + 1;
+            'outer: for yy in y_min..=y_max {
+                for xx in x_min..=x_max {
+                    if img.get_pixel(xx, yy).0[3] == 0 {
+                        let dx = xx as i32 - xi;
+                        let dy = yy as i32 - yi;
+                        let d = ((dx * dx + dy * dy) as f64).sqrt().round() as i32;
+                        if d < min_d {
+                            min_d = d;
+                            if min_d == 0 {
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+            }
+            if min_d <= r {
+                // Linear ramp: distance 0 → alpha 0, distance r → alpha 255
+                let a = ((min_d as f32 / r as f32) * 255.0).round().clamp(0.0, 255.0) as u8;
+                out.put_pixel(x, y, Rgba([p.0[0], p.0[1], p.0[2], a.min(p.0[3])]));
+            }
+        }
+    }
+    out
+}
+
+// ===================== STYLE BOOKS =====================
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+struct PixelStyle {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    palette: String,
+    #[serde(default)]
+    scale: u32,
+    #[serde(default)]
+    prompt_prefix: String,
+    #[serde(default)]
+    prompt_suffix: String,
+    #[serde(default)]
+    negative: String,
+    #[serde(default)]
+    default_pipeline: String,
+    #[serde(default)]
+    lora: String,
+    #[serde(default)]
+    ipadapter_ref: String,
+}
+
+fn style_dir() -> PathBuf {
+    let home = std::env::var("HOME").expect("HOME not set");
+    PathBuf::from(home).join(".claude/pixel-pipeline/styles")
+}
+
+fn ensure_style_dir() -> PathBuf {
+    let d = style_dir();
+    let _ = fs::create_dir_all(&d);
+    d
+}
+
+fn style_path(name: &str) -> PathBuf {
+    ensure_style_dir().join(format!("{}.json", name))
+}
+
+fn load_style(name: &str) -> Option<PixelStyle> {
+    let p = style_path(name);
+    if !p.exists() {
+        return None;
+    }
+    let s = fs::read_to_string(&p).ok()?;
+    serde_json::from_str(&s).ok()
+}
+
+fn cmd_style(cmd: StyleCmd) {
+    match cmd {
+        StyleCmd::Init { name, palette, scale } => {
+            let p = style_path(&name);
+            if p.exists() {
+                eprintln!("Style '{}' already exists at {}", name, p.display());
+                std::process::exit(1);
+            }
+            if find_palette(&palette).is_none() {
+                eprintln!("Unknown palette '{}'. List with: pix palettes", palette);
+                std::process::exit(1);
+            }
+            let style = PixelStyle {
+                name: name.clone(),
+                palette,
+                scale,
+                prompt_prefix: "pixel art, retro 16-bit, clean linework".into(),
+                prompt_suffix: "vibrant palette, white background, no anti-aliasing, isolated".into(),
+                negative: "blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, jpeg artifacts, watermark".into(),
+                default_pipeline: "character".into(),
+                lora: "pixel-art-xl-v1.1.safetensors".into(),
+                ipadapter_ref: String::new(),
+            };
+            let json = serde_json::to_string_pretty(&style).unwrap();
+            fs::write(&p, &json).expect("write style");
+            println!("Created style '{}' at {}", name, p.display());
+            println!("{}", json);
+        }
+        StyleCmd::List => {
+            let dir = ensure_style_dir();
+            let mut entries: Vec<(String, PathBuf)> = Vec::new();
+            if let Ok(rd) = fs::read_dir(&dir) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.extension().map(|e| e == "json").unwrap_or(false) {
+                        if let Some(stem) = p.file_stem().map(|s| s.to_string_lossy().to_string()) {
+                            entries.push((stem, p));
+                        }
+                    }
+                }
+            }
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            if entries.is_empty() {
+                println!("No styles yet. Initialize one with: pix style init <name>");
+                return;
+            }
+            println!("{:<18} {:<14} {:<8} {}", "NAME", "PALETTE", "SCALE", "DEFAULT PIPELINE");
+            println!("{}", "─".repeat(80));
+            for (name, p) in &entries {
+                let s = match load_style(name) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                println!(
+                    "{:<18} {:<14} {:<8} {}",
+                    s.name,
+                    s.palette,
+                    s.scale,
+                    s.default_pipeline
+                );
+                println!("{:<18} {}", "", p.display());
+            }
+        }
+        StyleCmd::Show { name } => {
+            match load_style(&name) {
+                Some(s) => {
+                    println!("{}", serde_json::to_string_pretty(&s).unwrap());
+                }
+                None => {
+                    eprintln!("Style '{}' not found. List with: pix style list", name);
+                    std::process::exit(1);
+                }
+            }
+        }
+        StyleCmd::Path { name } => {
+            println!("{}", style_path(&name).display());
+        }
+    }
+}
+
+// ===================== OUTLINE / RECOLOR =====================
+
+fn cmd_outline(input: &Path, color_hex: &str, thickness: u32, inside: bool, output: Option<&Path>) {
+    let color = match hex_to_rgb(color_hex.trim_start_matches('#')) {
+        Some(c) => c,
+        None => {
+            eprintln!("invalid color '{}'. expected 6-char hex (e.g. 000000)", color_hex);
+            std::process::exit(2);
+        }
+    };
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let mut current = img;
+    for _ in 0..thickness.max(1) {
+        let src = current.clone();
+        let mut next = src.clone();
+        for y in 0..h {
+            for x in 0..w {
+                let p = src.get_pixel(x, y);
+                let is_opaque = p.0[3] > 0;
+                // Outside outline: paint transparent pixels adjacent to opaque ones.
+                // Inside outline: paint opaque pixels adjacent to transparent ones.
+                let target_alpha = if inside { is_opaque } else { !is_opaque };
+                if !target_alpha {
+                    continue;
+                }
+                let mut adjacent_other = false;
+                for (dx, dy) in &[(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                    let nx = x as i32 + dx;
+                    let ny = y as i32 + dy;
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let np = src.get_pixel(nx as u32, ny as u32);
+                    let n_opaque = np.0[3] > 0;
+                    if inside {
+                        if !n_opaque {
+                            adjacent_other = true;
+                            break;
+                        }
+                    } else {
+                        if n_opaque {
+                            adjacent_other = true;
+                            break;
+                        }
+                    }
+                }
+                if adjacent_other {
+                    next.put_pixel(x, y, Rgba([color[0], color[1], color[2], 255]));
+                }
+            }
+        }
+        current = next;
+    }
+    let out_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let parent = input.parent().unwrap_or_else(|| Path::new("."));
+        parent.join(format!("{}-outlined.png", stem))
+    });
+    if let Err(e) = current.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({}px {} outline #{})", out_path.display(), thickness, if inside { "inside" } else { "outside" }, color_hex.trim_start_matches('#'));
+}
+
+fn cmd_recolor(input: &Path, swap_str: &str, tolerance: u32, output: Option<&Path>) {
+    // Parse swaps as "FROM:TO,FROM:TO"
+    let swaps: Vec<([u8; 3], [u8; 3])> = swap_str
+        .split(',')
+        .filter_map(|pair| {
+            let p = pair.split(':').collect::<Vec<_>>();
+            if p.len() != 2 {
+                return None;
+            }
+            let from = hex_to_rgb(p[0].trim().trim_start_matches('#'))?;
+            let to = hex_to_rgb(p[1].trim().trim_start_matches('#'))?;
+            Some((from, to))
+        })
+        .collect();
+    if swaps.is_empty() {
+        eprintln!("--swap requires at least one 'FROM:TO' pair (hex codes)");
+        std::process::exit(2);
+    }
+
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let mut out = img.clone();
+    let tol = tolerance as i32;
+    let mut changed: u64 = 0;
+    for y in 0..h {
+        for x in 0..w {
+            let p = img.get_pixel(x, y);
+            if p.0[3] == 0 {
+                continue;
+            }
+            for (from, to) in &swaps {
+                let dr = (p.0[0] as i32 - from[0] as i32).abs();
+                let dg = (p.0[1] as i32 - from[1] as i32).abs();
+                let db = (p.0[2] as i32 - from[2] as i32).abs();
+                if dr.max(dg).max(db) <= tol {
+                    out.put_pixel(x, y, Rgba([to[0], to[1], to[2], p.0[3]]));
+                    changed += 1;
+                    break;
+                }
+            }
+        }
+    }
+    let out_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let parent = input.parent().unwrap_or_else(|| Path::new("."));
+        parent.join(format!("{}-recolored.png", stem))
+    });
+    if let Err(e) = out.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({} swaps, {} px changed)", out_path.display(), swaps.len(), changed);
 }
 
 fn parse_nums(s: &str) -> Vec<i32> {
@@ -716,8 +1107,14 @@ fn cmd_mask(args: MaskArgs) {
         shape_count += 1;
     }
 
+    if args.auto_edges {
+        let src = img.to_rgba8();
+        sobel_into_mask(&src, &mut mask, args.edge_threshold);
+        shape_count += 1;
+    }
+
     if shape_count == 0 {
-        eprintln!("specify at least one of --rect / --circle / --ellipse / --polygon");
+        eprintln!("specify at least one of --rect / --circle / --ellipse / --polygon / --auto-edges");
         std::process::exit(2);
     }
 
@@ -741,6 +1138,37 @@ fn cmd_mask(args: MaskArgs) {
         if args.grow > 0 { format!(", grown {}px", args.grow) } else { String::new() },
         if args.invert { ", inverted".to_string() } else { String::new() },
     );
+}
+
+fn sobel_into_mask(src: &RgbaImage, mask: &mut RgbaImage, threshold: u32) {
+    let (w, h) = src.dimensions();
+    // Convert to grayscale (luminance), then Sobel.
+    let lum = |p: &Rgba<u8>| -> i32 {
+        if p.0[3] == 0 {
+            0
+        } else {
+            (p.0[0] as i32 * 299 + p.0[1] as i32 * 587 + p.0[2] as i32 * 114) / 1000
+        }
+    };
+    let thr = threshold as i32;
+    for y in 1..h.saturating_sub(1) {
+        for x in 1..w.saturating_sub(1) {
+            let p00 = lum(src.get_pixel(x - 1, y - 1));
+            let p01 = lum(src.get_pixel(x, y - 1));
+            let p02 = lum(src.get_pixel(x + 1, y - 1));
+            let p10 = lum(src.get_pixel(x - 1, y));
+            let p12 = lum(src.get_pixel(x + 1, y));
+            let p20 = lum(src.get_pixel(x - 1, y + 1));
+            let p21 = lum(src.get_pixel(x, y + 1));
+            let p22 = lum(src.get_pixel(x + 1, y + 1));
+            let gx = (p02 + 2 * p12 + p22) - (p00 + 2 * p10 + p20);
+            let gy = (p20 + 2 * p21 + p22) - (p00 + 2 * p01 + p02);
+            let mag = (gx * gx + gy * gy).isqrt();
+            if mag > thr {
+                mask.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+            }
+        }
+    }
 }
 
 fn cmd_clean(input: &Path, passes: u32, output: Option<&Path>) {
@@ -919,6 +1347,8 @@ struct GenArgs<'a> {
     bg_remove: bool,
     batch: u32,
     pack: bool,
+    variations: Option<&'a str>,
+    style: Option<&'a str>,
     host: &'a str,
 }
 
@@ -1468,6 +1898,18 @@ fn cmd_pipelines() {
     }
 }
 
+fn sanitize_path_segment(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            out.push(c.to_ascii_lowercase());
+        } else if c.is_whitespace() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
 fn cmd_gen(args: GenArgs) {
     // Resolve host: if empty, auto-detect across common ports.
     let resolved_host = if args.host.is_empty() {
@@ -1492,17 +1934,39 @@ fn cmd_gen(args: GenArgs) {
         args.host.to_string()
     };
     let host = resolved_host.as_str();
-    eprintln!("Using ComfyUI at {}  (pipeline: {})", host, args.pipeline);
+
+    // Load style (if any) — overrides default pipeline + wraps prompt + sets defaults
+    let style: Option<PixelStyle> = args.style.and_then(|s| {
+        let loaded = load_style(s);
+        if loaded.is_none() {
+            eprintln!("Style '{}' not found. List with: pix style list", s);
+            std::process::exit(1);
+        }
+        loaded
+    });
+    let pipeline_name: String = match (&style, args.pipeline) {
+        (Some(s), p) if p == "character" && !s.default_pipeline.is_empty() => s.default_pipeline.clone(),
+        (_, p) => p.to_string(),
+    };
+    eprintln!(
+        "Using ComfyUI at {}  (pipeline: {}{})",
+        host,
+        pipeline_name,
+        match &style {
+            Some(s) => format!(", style: {}", s.name),
+            None => String::new(),
+        }
+    );
 
     // Resolve workflow path: --workflow overrides --pipeline lookup
     let template_path = match args.workflow {
         Some(p) => p.to_path_buf(),
-        None => match find_pipeline_workflow(args.pipeline) {
+        None => match find_pipeline_workflow(&pipeline_name) {
             Some(p) => p,
             None => {
                 eprintln!(
                     "Pipeline '{}' not found. List options with: pix pipelines",
-                    args.pipeline
+                    pipeline_name
                 );
                 std::process::exit(1);
             }
@@ -1608,14 +2072,24 @@ fn cmd_gen(args: GenArgs) {
     let denoise = args.denoise.unwrap_or(default_denoise);
     let base_seed = args.seed.unwrap_or_else(random_seed);
 
-    // Apply parameters via metadata (everything except seed; seed varies per batch iteration)
+    // Effective LoRA (style override unless user passed one)
+    let effective_lora: String = match (&style, args.lora) {
+        (Some(s), default_l) if default_l == "pixel-art-xl-v1.1.safetensors" && !s.lora.is_empty() => s.lora.clone(),
+        (_, l) => l.to_string(),
+    };
+    // Effective negative
+    let style_negative: Option<String> = style
+        .as_ref()
+        .and_then(|s| if s.negative.is_empty() { None } else { Some(s.negative.clone()) });
+    let effective_negative: Option<String> = args.negative.map(String::from).or(style_negative);
+
+    // Apply parameters via metadata (everything except prompt + seed; prompt varies per variation, seed per batch)
     apply_param(&mut workflow, &meta, "model", serde_json::Value::String(args.model.to_string()));
-    if !args.lora.eq_ignore_ascii_case("none") {
-        apply_param(&mut workflow, &meta, "lora", serde_json::Value::String(args.lora.to_string()));
+    if !effective_lora.eq_ignore_ascii_case("none") {
+        apply_param(&mut workflow, &meta, "lora", serde_json::Value::String(effective_lora.clone()));
     }
-    apply_param(&mut workflow, &meta, "prompt", serde_json::Value::String(args.prompt.to_string()));
-    if let Some(n) = args.negative {
-        apply_param(&mut workflow, &meta, "negative", serde_json::Value::String(n.to_string()));
+    if let Some(n) = &effective_negative {
+        apply_param(&mut workflow, &meta, "negative", serde_json::Value::String(n.clone()));
     }
     apply_param(&mut workflow, &meta, "steps", serde_json::json!(steps));
     apply_param(&mut workflow, &meta, "cfg", serde_json::json!(cfg));
@@ -1633,17 +2107,54 @@ fn cmd_gen(args: GenArgs) {
         }
     }
 
+    // Variations: comma-separated suffixes appended to the prompt.
+    let variation_suffixes: Vec<String> = match args.variations {
+        Some(s) => s
+            .split(',')
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect(),
+        None => vec![String::new()],
+    };
+
     let batch_n = args.batch.max(1);
+    let total_n = (variation_suffixes.len() as u32) * batch_n;
     let base_out_path = args
         .output
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from(format!("pix-{}-{}.png", args.pipeline, base_seed)));
-    let mut produced_pix_paths: Vec<PathBuf> = Vec::with_capacity(batch_n as usize);
+        .unwrap_or_else(|| PathBuf::from(format!("pix-{}-{}.png", pipeline_name, base_seed)));
+    let mut produced_pix_paths: Vec<PathBuf> = Vec::with_capacity(total_n as usize);
 
-    for idx in 0..batch_n {
-        let actual_seed = base_seed.wrapping_add(idx as u64);
-        let mut w_iter = workflow.clone();
-        apply_param(&mut w_iter, &meta, "seed", serde_json::json!(actual_seed));
+    // Build effective prompt template (style prefix/suffix wraps user prompt)
+    let style_prefix: String = style.as_ref().map(|s| s.prompt_prefix.clone()).unwrap_or_default();
+    let style_suffix: String = style.as_ref().map(|s| s.prompt_suffix.clone()).unwrap_or_default();
+    let compose_prompt = |variant_suffix: &str| -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        if !style_prefix.is_empty() {
+            parts.push(&style_prefix);
+        }
+        parts.push(args.prompt);
+        if !variant_suffix.is_empty() {
+            parts.push(variant_suffix);
+        }
+        if !style_suffix.is_empty() {
+            parts.push(&style_suffix);
+        }
+        parts.join(", ")
+    };
+
+    let mut global_idx: u32 = 0;
+    for (var_idx, suffix) in variation_suffixes.iter().enumerate() {
+        let final_prompt = compose_prompt(suffix);
+        if !suffix.is_empty() {
+            eprintln!("Variation '{}': {}", suffix, final_prompt);
+        }
+        for batch_idx in 0..batch_n {
+            let actual_seed = base_seed.wrapping_add(global_idx as u64);
+            let mut w_iter = workflow.clone();
+            apply_param(&mut w_iter, &meta, "prompt", serde_json::Value::String(final_prompt.clone()));
+            apply_param(&mut w_iter, &meta, "seed", serde_json::json!(actual_seed));
+            let _ = (var_idx, batch_idx); // for future logging
 
         // Submit
         let body = serde_json::json!({ "prompt": w_iter }).to_string();
@@ -1697,8 +2208,8 @@ fn cmd_gen(args: GenArgs) {
         };
         eprintln!(
             "[{}/{}] Queued {} — {}x{} seed {}...",
-            idx + 1,
-            batch_n,
+            global_idx + 1,
+            total_n,
             prompt_id,
             w,
             h,
@@ -1774,13 +2285,18 @@ fn cmd_gen(args: GenArgs) {
             urlencode(&filename),
             urlencode(&subfolder)
         );
-        let out_path = if batch_n > 1 {
+        let out_path = if total_n > 1 {
             let stem = base_out_path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "pix".to_string());
             let parent = base_out_path.parent().unwrap_or_else(|| Path::new("."));
-            parent.join(format!("{}-{}.png", stem, idx))
+            let var_tag = if suffix.is_empty() {
+                String::new()
+            } else {
+                format!("-{}", sanitize_path_segment(suffix))
+            };
+            parent.join(format!("{}{}-{}.png", stem, var_tag, global_idx))
         } else {
             base_out_path.clone()
         };
@@ -1792,7 +2308,7 @@ fn cmd_gen(args: GenArgs) {
 
         // Optional bg-remove pass (runs BEFORE pixelify so palette quantization sees clean alpha)
         let post_bg_path = if args.bg_remove {
-            cmd_bg_remove(&out_path, 30, None, Some(&out_path));
+            cmd_bg_remove(&out_path, 30, None, 0, Some(&out_path));
             out_path.clone()
         } else {
             out_path.clone()
@@ -1801,10 +2317,18 @@ fn cmd_gen(args: GenArgs) {
         // Optional pixelify pass
         if args.pixelify {
             let cfg = read_config();
-            let scale = cfg.as_ref().map(|c| c.scale).unwrap_or(64);
-            let palette = cfg
-                .as_ref()
-                .map(|c| c.palette.clone())
+            let (style_scale, style_palette): (Option<u32>, Option<String>) = match &style {
+                Some(s) => (
+                    if s.scale > 0 { Some(s.scale) } else { None },
+                    if s.palette.is_empty() { None } else { Some(s.palette.clone()) },
+                ),
+                None => (None, None),
+            };
+            let scale = style_scale
+                .or_else(|| cfg.as_ref().map(|c| c.scale))
+                .unwrap_or(64);
+            let palette = style_palette
+                .or_else(|| cfg.as_ref().map(|c| c.palette.clone()))
                 .unwrap_or_else(|| "endesga-32".to_string());
             let pal_vec = resolve_palette(Some(&palette));
             let img = match image::open(&post_bg_path) {
@@ -1829,6 +2353,8 @@ fn cmd_gen(args: GenArgs) {
                 palette
             );
             produced_pix_paths.push(pix_path);
+        }
+            global_idx += 1;
         }
     }
 
