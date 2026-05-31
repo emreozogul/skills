@@ -50,6 +50,16 @@ Ships as **both** a Skill Claude invokes at the start of any project-scoped sess
 
 ---
 
+### [`session-to-vault/`](./session-to-vault) — End-of-session distillation into project memory + insight library
+
+The other half of `project-memory`. When you wrap up a session ("ok thanks", "I'll come back tomorrow"), Claude distills decisions, open questions, next focus, and standalone learnings — then writes them to `pj` and (when worthy) to `insight-vault`. With user approval before saving.
+
+**Use when:** you want sessions to compound — yesterday's decisions become tomorrow's starting context, automatically.
+
+[Read more →](./session-to-vault/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
