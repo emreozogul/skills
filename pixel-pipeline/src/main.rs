@@ -278,12 +278,24 @@ enum StyleCmd {
         #[arg(long, default_value_t = 64)]
         scale: u32,
     },
+    /// Install the 10 pre-made bundled styles (fantasy-rpg, cyberpunk-neon, gothic-horror, …)
+    Install {
+        /// Overwrite existing styles with the same name
+        #[arg(long)]
+        force: bool,
+    },
     /// List all available styles
     List,
     /// Show a style's contents
     Show { name: String },
     /// Print the absolute path to a style file (for editing)
     Path { name: String },
+    /// Generate a visual reference card for a style (palette swatch + style info → PNG)
+    Book {
+        name: String,
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
 }
 
 // ===================== PALETTES =====================
@@ -370,6 +382,110 @@ const PALETTES: &[PaletteDef] = &[
         name: "1bit",
         note: "1-bit black & white",
         colors_hex: &["000000", "FFFFFF"],
+    },
+    // ───────────────────────── THEMED PALETTES ─────────────────────────
+    PaletteDef {
+        name: "fantasy-gold",
+        note: "Fantasy Gold — warm parchment, gold, deep reds, fortified browns. RPGs, treasure rooms.",
+        colors_hex: &[
+            "1A0F0A", "2D1810", "3D2415", "5C3624", "8B5A2B", "B8763A", "D9A55A", "F4D783",
+            "FFE9B0", "FFF5DA", "8B0A0A", "B23030", "D94545", "E86B6B", "1B2640", "2C3B5C",
+            "4A5A7E", "6B7BA0", "3A2A1A", "5C4530", "7D6748", "A88B66", "C9AC85", "E5D4B0",
+        ],
+    },
+    PaletteDef {
+        name: "cyberpunk-neon",
+        note: "Cyberpunk Neon — electric pinks, purples, neon blue/green, deep black night.",
+        colors_hex: &[
+            "0A0014", "1A0830", "2B1452", "421E80", "5B2FA8", "7A48D6", "9C6BE8", "B98FFA",
+            "FF1493", "FF45B5", "FF7AC9", "FFAEDE", "00FFFF", "00C8E8", "0096C8", "006E96",
+            "00FF66", "00C850", "0A0A1F", "1F1F3F", "3F3F5F", "5F5F7F", "FFFFFF", "FFD700",
+        ],
+    },
+    PaletteDef {
+        name: "autumn-forest",
+        note: "Autumn Forest — warm oranges, reds, deep greens, rust browns.",
+        colors_hex: &[
+            "0F0F08", "1F1F10", "3D3018", "5C4628", "7D6234", "A88248", "C99E5C", "E5BB78",
+            "C2410C", "EA580C", "F97316", "FB923C", "FED7AA", "7C2D12", "991B1B", "DC2626",
+            "166534", "16A34A", "65A30D", "84CC16", "BEF264", "FACC15", "3D2A14", "F8F1E0",
+        ],
+    },
+    PaletteDef {
+        name: "deep-ocean",
+        note: "Deep Ocean — navy, teal, sea green with coral and bioluminescent accents.",
+        colors_hex: &[
+            "020617", "0C1834", "162B5E", "1E3A8A", "1D4ED8", "2563EB", "3B82F6", "60A5FA",
+            "0E7490", "0891B2", "06B6D4", "22D3EE", "5EEAD4", "022C22", "065F46", "059669",
+            "FB7185", "F43F5E", "FBBF24", "FDE68A", "FFFFFF", "94A3B8", "475569", "1E293B",
+        ],
+    },
+    PaletteDef {
+        name: "gothic-horror",
+        note: "Gothic Horror — blacks, dark reds, sickly green, bone white, blood splatter.",
+        colors_hex: &[
+            "000000", "0D0D0D", "1A0A0A", "2A1010", "3D1A1A", "5C2020", "7A0000", "B00000",
+            "1A0A1A", "2D1A2D", "1A2A0A", "2A4A1A", "4A6A2A", "6A8A3A", "8A9C5C", "B0B095",
+            "E5E5C5", "FFFEF0", "2A2A2A", "4A4A4A", "6A6A6A", "8A8A8A", "AAAAAA", "CACACA",
+        ],
+    },
+    PaletteDef {
+        name: "pastel-cute",
+        note: "Pastel Cute — soft pinks, mints, pale yellows, lavender, cream. Cozy game vibes.",
+        colors_hex: &[
+            "FFF0F5", "FFE0EC", "FFC0CB", "FFA5B8", "FF85A2", "FF6B8C", "D8B4F5", "B89AE8",
+            "9682D8", "FDFD96", "FCE883", "F8C76E", "C1FFD7", "9DEFB7", "78D8A5", "5BC089",
+            "BAE6FD", "7DD3FC", "38BDF8", "0EA5E9", "FFFFFF", "FAF5EE", "E8D8C8", "8B7A6B",
+        ],
+    },
+    PaletteDef {
+        name: "desert-sands",
+        note: "Desert Sands — tans, sands, dusty reds, terracotta with sky blue contrast.",
+        colors_hex: &[
+            "FFF8DC", "F5E6C0", "E8C996", "D4A56A", "B07B3A", "8B5A2B", "6B3F1F", "451E0F",
+            "C45D3F", "A04025", "7A2810", "3D1408", "6FA8D0", "4A7FAA", "2D5680", "F4A460",
+        ],
+    },
+    PaletteDef {
+        name: "ice-frost",
+        note: "Ice Frost — pale blues, whites, frost cyans, glacier shadows.",
+        colors_hex: &[
+            "F0F8FF", "DBEAFE", "BFDBFE", "93C5FD", "60A5FA", "3B82F6", "1E3A8A", "172554",
+            "E0F2FE", "BAE6FD", "7DD3FC", "0EA5E9", "F1F5F9", "CBD5E1", "64748B", "0F172A",
+        ],
+    },
+    PaletteDef {
+        name: "volcanic-hell",
+        note: "Volcanic Hell — molten oranges, deep reds, ash blacks, ember glows.",
+        colors_hex: &[
+            "000000", "0F0500", "1F0A00", "3D1500", "5C2000", "8B3000", "C84800", "EA580C",
+            "F97316", "FB923C", "FED7AA", "FFFFFF", "2C1810", "4A2C18", "6B3F20", "1A1A1A",
+        ],
+    },
+    PaletteDef {
+        name: "synthwave",
+        note: "Synthwave — hot pink, purple, cyan, deep night blue. 80s sunset.",
+        colors_hex: &[
+            "0A0014", "1A0830", "FF1493", "FF45B5", "9C6BE8", "5B2FA8", "00FFFF", "00C8E8",
+            "FFD700", "FFAEDE", "FF7AC9", "FF45B5", "1A1A2F", "2D2D5F", "FFFFFF", "FF6B00",
+        ],
+    },
+    PaletteDef {
+        name: "sepia",
+        note: "Sepia — vintage photo tones, warm browns, cream highlights.",
+        colors_hex: &[
+            "2A1A0A", "4A3020", "6B4628", "8C5E32", "AE7A40", "C8985A", "DDB57E", "EBD0A5",
+        ],
+    },
+    PaletteDef {
+        name: "mono-blue",
+        note: "Mono Blue — 4-color blue scale (Game-Boy-style but cool).",
+        colors_hex: &["0A1F2D", "1E4D6B", "5A9BC2", "BBE3F5"],
+    },
+    PaletteDef {
+        name: "mono-amber",
+        note: "Mono Amber — 4-color amber scale (terminal/CRT aesthetic).",
+        colors_hex: &["1F0F00", "5C2A00", "B85F00", "FFB347"],
     },
 ];
 
@@ -803,6 +919,265 @@ fn cmd_style(cmd: StyleCmd) {
         }
         StyleCmd::Path { name } => {
             println!("{}", style_path(&name).display());
+        }
+        StyleCmd::Install { force } => cmd_style_install(force),
+        StyleCmd::Book { name, output } => cmd_style_book(&name, output.as_deref()),
+    }
+}
+
+const BUNDLED_STYLES: &[(&str, &str)] = &[
+    ("fantasy-rpg", include_str!("../assets/styles/fantasy-rpg.json")),
+    ("chunky-indie", include_str!("../assets/styles/chunky-indie.json")),
+    ("retro-nes", include_str!("../assets/styles/retro-nes.json")),
+    ("gameboy-mono", include_str!("../assets/styles/gameboy-mono.json")),
+    ("pico-fantasy", include_str!("../assets/styles/pico-fantasy.json")),
+    ("cyberpunk-neon", include_str!("../assets/styles/cyberpunk-neon.json")),
+    ("gothic-horror", include_str!("../assets/styles/gothic-horror.json")),
+    ("cute-pastel", include_str!("../assets/styles/cute-pastel.json")),
+    ("desert-tales", include_str!("../assets/styles/desert-tales.json")),
+    ("synthwave-arcade", include_str!("../assets/styles/synthwave-arcade.json")),
+];
+
+fn cmd_style_install(force: bool) {
+    ensure_style_dir();
+    let mut installed = 0u32;
+    let mut skipped = 0u32;
+    for (name, content) in BUNDLED_STYLES {
+        let p = style_path(name);
+        if p.exists() && !force {
+            skipped += 1;
+            continue;
+        }
+        match fs::write(&p, content) {
+            Ok(_) => {
+                installed += 1;
+                println!("installed {} → {}", name, p.display());
+            }
+            Err(e) => {
+                eprintln!("failed {}: {}", name, e);
+            }
+        }
+    }
+    println!();
+    println!("Installed {} styles{}.", installed, if skipped > 0 { format!(" ({} skipped, use --force to overwrite)", skipped) } else { String::new() });
+    println!("List them: pix style list");
+    println!("Reference card: pix style book <name>");
+    println!("Use one: pix gen \"<prompt>\" --style <name>");
+}
+
+fn cmd_style_book(name: &str, output: Option<&Path>) {
+    let style = match load_style(name) {
+        Some(s) => s,
+        None => {
+            eprintln!("Style '{}' not found. Install bundled styles: pix style install", name);
+            std::process::exit(1);
+        }
+    };
+    let palette = match find_palette(&style.palette) {
+        Some(p) => p,
+        None => {
+            eprintln!("Style palette '{}' not found.", style.palette);
+            std::process::exit(1);
+        }
+    };
+
+    // Composition:
+    //   1024 wide × ~520 tall
+    //   Header band: dark background with style name + palette name + scale
+    //   Palette swatch: 8 columns × N rows of color squares (64px each)
+    //   Bottom band: prompt prefix + suffix (truncated)
+
+    let w: u32 = 1024;
+    let header_h: u32 = 96;
+    let swatch_cell: u32 = 96;
+    let swatch_cols: u32 = 8;
+    let swatch_rows: u32 = ((palette.len() as u32) + swatch_cols - 1) / swatch_cols;
+    let swatch_h = swatch_cell * swatch_rows;
+    let footer_h: u32 = 180;
+    let total_h: u32 = header_h + swatch_h + footer_h;
+
+    let bg = [26, 24, 37, 255];        // dark panel
+    let panel_2 = [42, 41, 64, 255];   // mid panel
+    let text_color = [240, 238, 242, 255];
+    let muted = [148, 143, 174, 255];
+    let accent = [245, 158, 11, 255];
+
+    let mut canvas = RgbaImage::from_pixel(w, total_h, Rgba(bg));
+
+    // Header band
+    for y in 0..header_h {
+        for x in 0..w {
+            canvas.put_pixel(x, y, Rgba(panel_2));
+        }
+    }
+    // Header accent stripe
+    for y in (header_h - 4)..header_h {
+        for x in 0..w {
+            canvas.put_pixel(x, y, Rgba(accent));
+        }
+    }
+
+    // Footer band (info)
+    let footer_y = header_h + swatch_h;
+    for y in footer_y..total_h {
+        for x in 0..w {
+            canvas.put_pixel(x, y, Rgba(panel_2));
+        }
+    }
+
+    // Swatch cells
+    for (i, color) in palette.iter().enumerate() {
+        let col = (i as u32) % swatch_cols;
+        let row = (i as u32) / swatch_cols;
+        let cx = col * swatch_cell;
+        let cy = header_h + row * swatch_cell;
+        for yy in 0..swatch_cell {
+            for xx in 0..swatch_cell {
+                canvas.put_pixel(cx + xx, cy + yy, Rgba([color[0], color[1], color[2], 255]));
+            }
+        }
+        // Tiny black corner dot to separate cells visually
+        for yy in 0..2 {
+            for xx in 0..2 {
+                canvas.put_pixel(cx + xx, cy + yy, Rgba([0, 0, 0, 255]));
+            }
+        }
+    }
+
+    // Draw text via tiny pixel font.
+    let title = style.name.to_uppercase();
+    draw_pixel_text(&mut canvas, &title, 24, 20, 4, accent);
+    let subtitle = format!(
+        "palette: {}   scale: {}   pipeline: {}",
+        style.palette, style.scale, style.default_pipeline
+    );
+    draw_pixel_text(&mut canvas, &subtitle, 24, 64, 2, muted);
+
+    let prompt_excerpt = if style.prompt_prefix.len() > 90 {
+        format!("{}…", &style.prompt_prefix[..90])
+    } else {
+        style.prompt_prefix.clone()
+    };
+    draw_pixel_text(&mut canvas, "PROMPT PREFIX", 24, footer_y + 16, 2, accent);
+    draw_pixel_text(&mut canvas, &prompt_excerpt, 24, footer_y + 44, 2, text_color);
+
+    let suffix_excerpt = if style.prompt_suffix.len() > 90 {
+        format!("{}…", &style.prompt_suffix[..90])
+    } else {
+        style.prompt_suffix.clone()
+    };
+    draw_pixel_text(&mut canvas, "PROMPT SUFFIX", 24, footer_y + 84, 2, accent);
+    draw_pixel_text(&mut canvas, &suffix_excerpt, 24, footer_y + 112, 2, text_color);
+
+    let usage = format!("pix gen \"<your prompt>\" --style {}", style.name);
+    draw_pixel_text(&mut canvas, &usage, 24, footer_y + 150, 2, muted);
+
+    let out_path = output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        let home = std::env::var("HOME").expect("HOME");
+        let dir = PathBuf::from(&home).join("Documents/pix-gallery/style-books");
+        let _ = fs::create_dir_all(&dir);
+        dir.join(format!("{}-book.png", style.name))
+    });
+    if let Err(e) = canvas.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({}x{}, {} swatches)", out_path.display(), w, total_h, palette.len());
+}
+
+// ───────────── Tiny embedded pixel font (5×7 ASCII subset for style book) ─────────────
+
+const FONT_DATA: &[(char, &[u8])] = &[
+    ('A', &[0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001]),
+    ('B', &[0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110]),
+    ('C', &[0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110]),
+    ('D', &[0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110]),
+    ('E', &[0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111]),
+    ('F', &[0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000]),
+    ('G', &[0b01110, 0b10001, 0b10000, 0b10011, 0b10001, 0b10001, 0b01110]),
+    ('H', &[0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001]),
+    ('I', &[0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110]),
+    ('J', &[0b00111, 0b00010, 0b00010, 0b00010, 0b00010, 0b10010, 0b01100]),
+    ('K', &[0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001]),
+    ('L', &[0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111]),
+    ('M', &[0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001]),
+    ('N', &[0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001]),
+    ('O', &[0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110]),
+    ('P', &[0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000]),
+    ('Q', &[0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101]),
+    ('R', &[0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001]),
+    ('S', &[0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110]),
+    ('T', &[0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100]),
+    ('U', &[0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110]),
+    ('V', &[0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100]),
+    ('W', &[0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010]),
+    ('X', &[0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001]),
+    ('Y', &[0b10001, 0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100]),
+    ('Z', &[0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111]),
+    ('0', &[0b01110, 0b10011, 0b10101, 0b10101, 0b10101, 0b11001, 0b01110]),
+    ('1', &[0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110]),
+    ('2', &[0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111]),
+    ('3', &[0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110]),
+    ('4', &[0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010]),
+    ('5', &[0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110]),
+    ('6', &[0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110]),
+    ('7', &[0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000]),
+    ('8', &[0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110]),
+    ('9', &[0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100]),
+    (' ', &[0, 0, 0, 0, 0, 0, 0]),
+    ('.', &[0, 0, 0, 0, 0, 0, 0b00100]),
+    (',', &[0, 0, 0, 0, 0, 0b00100, 0b01000]),
+    (':', &[0, 0b00100, 0, 0, 0, 0b00100, 0]),
+    (';', &[0, 0b00100, 0, 0, 0, 0b00100, 0b01000]),
+    ('-', &[0, 0, 0, 0b01110, 0, 0, 0]),
+    ('_', &[0, 0, 0, 0, 0, 0, 0b11111]),
+    ('/', &[0b00001, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b10000]),
+    ('!', &[0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100]),
+    ('?', &[0b01110, 0b10001, 0b00001, 0b00110, 0b00100, 0, 0b00100]),
+    ('"', &[0b01010, 0b01010, 0, 0, 0, 0, 0]),
+    ('\'', &[0b00100, 0b00100, 0, 0, 0, 0, 0]),
+    ('(', &[0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010]),
+    (')', &[0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000]),
+    ('+', &[0, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0]),
+    ('<', &[0b00010, 0b00100, 0b01000, 0b10000, 0b01000, 0b00100, 0b00010]),
+    ('>', &[0b01000, 0b00100, 0b00010, 0b00001, 0b00010, 0b00100, 0b01000]),
+];
+
+fn glyph_for(c: char) -> Option<&'static [u8]> {
+    let upper = c.to_ascii_uppercase();
+    FONT_DATA.iter().find(|(g, _)| *g == upper).map(|(_, b)| *b)
+}
+
+fn draw_pixel_text(canvas: &mut RgbaImage, text: &str, x: u32, y: u32, scale: u32, color: [u8; 4]) {
+    let glyph_w = 5u32;
+    let glyph_h = 7u32;
+    let kern = 1u32;
+    let (cw, ch) = canvas.dimensions();
+    let mut cursor_x = x;
+    for c in text.chars() {
+        let glyph = match glyph_for(c) {
+            Some(g) => g,
+            None => continue,
+        };
+        for (row, bits) in glyph.iter().enumerate() {
+            for col in 0..glyph_w {
+                let mask = 1u8 << (glyph_w - 1 - col);
+                if (bits & mask) != 0 {
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            let px = cursor_x + col * scale + dx;
+                            let py = y + (row as u32) * scale + dy;
+                            if px < cw && py < ch {
+                                canvas.put_pixel(px, py, Rgba(color));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        cursor_x += (glyph_w + kern) * scale;
+        if cursor_x >= cw {
+            break;
         }
     }
 }

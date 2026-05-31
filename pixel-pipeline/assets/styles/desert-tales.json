@@ -1,0 +1,11 @@
+{
+  "name": "desert-tales",
+  "palette": "desert-sands",
+  "scale": 64,
+  "prompt_prefix": "pixel art, arid desert aesthetic, sun-bleached colors, sand and stone, mediterranean RPG",
+  "prompt_suffix": "warm earth palette, no anti-aliasing, isolated, sand-toned background, sprite",
+  "negative": "snow, ice, frost, jungle, underwater, photorealistic, 3d, blurry, watermark",
+  "default_pipeline": "character",
+  "lora": "pixel-art-xl-v1.1.safetensors",
+  "ipadapter_ref": ""
+}

@@ -1,0 +1,11 @@
+{
+  "name": "cyberpunk-neon",
+  "palette": "cyberpunk-neon",
+  "scale": 64,
+  "prompt_prefix": "pixel art, cyberpunk neon aesthetic, futuristic, neon-lit night, glowing accents, dark deep blacks",
+  "prompt_suffix": "vibrant neon palette, no anti-aliasing, isolated, dark background, sci-fi sprite",
+  "negative": "medieval, fantasy, daytime, warm pastoral, photorealistic, 3d, blurry, soft edges, watermark",
+  "default_pipeline": "character",
+  "lora": "pixel-art-xl-v1.1.safetensors",
+  "ipadapter_ref": ""
+}

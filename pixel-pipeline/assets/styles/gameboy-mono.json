@@ -1,0 +1,11 @@
+{
+  "name": "gameboy-mono",
+  "palette": "gameboy",
+  "scale": 32,
+  "prompt_prefix": "monochrome pixel art, 4-color green, original Game Boy DMG aesthetic, dithered shading",
+  "prompt_suffix": "no anti-aliasing, isolated, white background, retro sprite, simple shapes",
+  "negative": "color, modern, hi-res, anti-aliased, gradient shading, photorealistic, 3d, multiple colors",
+  "default_pipeline": "character",
+  "lora": "pixel-art-xl-v1.1.safetensors",
+  "ipadapter_ref": ""
+}

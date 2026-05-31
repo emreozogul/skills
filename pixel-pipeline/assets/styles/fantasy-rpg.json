@@ -1,0 +1,11 @@
+{
+  "name": "fantasy-rpg",
+  "palette": "resurrect-64",
+  "scale": 64,
+  "prompt_prefix": "pixel art, fantasy RPG art style, clean linework, medieval fantasy, classic JRPG aesthetic",
+  "prompt_suffix": "vibrant palette, white background, no anti-aliasing, isolated, sprite",
+  "negative": "blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, modern, sci-fi, futuristic, watermark",
+  "default_pipeline": "character",
+  "lora": "pixel-art-xl-v1.1.safetensors",
+  "ipadapter_ref": ""
+}

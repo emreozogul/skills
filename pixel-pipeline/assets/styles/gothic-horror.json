@@ -1,0 +1,11 @@
+{
+  "name": "gothic-horror",
+  "palette": "gothic-horror",
+  "scale": 64,
+  "prompt_prefix": "pixel art, gothic horror aesthetic, dark moody, eerie atmosphere, bone whites and blood reds",
+  "prompt_suffix": "muted palette, no anti-aliasing, dark background, isolated, ominous sprite",
+  "negative": "bright cheerful, cute, pastoral, daytime, sunny, photorealistic, 3d, watermark",
+  "default_pipeline": "character",
+  "lora": "pixel-art-xl-v1.1.safetensors",
+  "ipadapter_ref": ""
+}

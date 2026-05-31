@@ -1,0 +1,11 @@
+{
+  "name": "pico-fantasy",
+  "palette": "pico-8",
+  "scale": 64,
+  "prompt_prefix": "pixel art, PICO-8 16-color palette, fantasy console aesthetic, charming chunky pixels",
+  "prompt_suffix": "limited palette, no anti-aliasing, white background, isolated, cute sprite",
+  "negative": "many colors, photorealistic, 3d, anti-aliased, soft edges, gradient shading, watermark",
+  "default_pipeline": "character",
+  "lora": "pixel-art-xl-v1.1.safetensors",
+  "ipadapter_ref": ""
+}
