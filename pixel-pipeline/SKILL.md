@@ -78,19 +78,56 @@ Output: `pixel.config.json` in the project directory. Subsequent `pix` commands 
 
 ## Step 2 — Get a source image (pick one of three paths)
 
-### Path A — Local AI generation (if running)
+### Path A — Local AI generation via ComfyUI
 
-Check `curl -s http://localhost:8188` (ComfyUI default) or `curl -s http://localhost:7860` (A1111). If either responds, generate a concept via its API with a pixel-art-tuned prompt:
+If ComfyUI is installed (e.g. `/Applications/ComfyUI.app` on macOS), use `pix gen`:
 
-```
-prompt: "pixel art, <subject>, <scene>, retro 16-bit aesthetic, clean linework, vibrant palette, white background"
-negative: "blurry, photorealistic, anti-aliased, soft edges, 3d"
-size: 512x512 (will be downscaled)
-sampler: euler (good for clean output)
-steps: 20-30
+```bash
+# Verify it's running
+pix gen "pixel art knight, fantasy, 16-bit retro" --pixelify
 ```
 
-Save the generation to a temp file. Note: without a pixel-art-tuned LoRA or checkpoint, the result will still look like blurry digital art — pass it through Step 3 to convert.
+The `--pixelify` flag automatically downscales + palette-snaps the generation to the project's `pixel.config.json` settings. Without it, you get a 1024x1024 SDXL output to pass through Step 3 yourself.
+
+**Full flags:**
+
+```bash
+pix gen "<positive prompt>" \
+  --negative "<override negatives>" \      # optional
+  --model "sd_xl_base_1.0.safetensors" \   # checkpoint name (must exist)
+  --lora "pixel-art-xl-v1.1.safetensors" \ # or `--lora none` to disable
+  --size 1024x1024 \
+  --steps 25 \
+  --cfg 7.5 \
+  --seed 42 \                               # optional, omit for random
+  --output ./out.png \
+  --pixelify                                # downscale + palette to project config
+```
+
+**First-time setup** — if `pix gen` errors that the model isn't found, you need to download checkpoint + LoRA. See `~/.claude/skills/pixel-pipeline/MODELS.md` (or the README in the repo) for sources. Standard setup:
+
+- **Checkpoint:** SDXL Base 1.0 (`sd_xl_base_1.0.safetensors`, ~6.5 GB) — from Hugging Face: https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors → place in `~/Documents/ComfyUI/models/checkpoints/`
+- **LoRA:** Pixel Art XL by Nerijs (`pixel-art-xl-v1.1.safetensors`, ~200 MB) — from Civitai: https://civitai.com/models/120096/pixel-art-xl → place in `~/Documents/ComfyUI/models/loras/`
+
+Without these, generation will fail with a "node validation error" telling you exactly what's missing.
+
+**Pixel art prompt cookbook (battle-tested with Pixel Art XL):**
+
+```
+"pixel art, [subject], [setting], 16-bit retro, clean linework, vibrant palette, white background, no anti-aliasing"
+
+Examples:
+  "pixel art, knight with sword, fantasy stance, 16-bit retro, vibrant palette, white background"
+  "pixel art, forest tile, oak tree with grass, top-down view, vibrant earth tones, isolated"
+  "pixel art, fireball spell effect, glowing orange, dynamic motion lines, transparent background"
+```
+
+Default negative prompt: `blurry, photorealistic, anti-aliased, soft edges, 3d render, photograph, jpeg artifacts, watermark`. Override with `--negative` if you need to.
+
+**Notes:**
+- SDXL outputs 1024x1024 by default. The pixel art LoRA biases output toward chunky pixel aesthetics, but it's still a high-res image. Step 3 (or `--pixelify`) downscales to your target.
+- Don't ask SDXL to generate a 64x64 image directly — diffusion models hate small resolutions. Generate big, downscale clean.
+- First gen will be slow (~30-60s on macOS Apple Silicon). Subsequent gens with the same model loaded are faster (~10-20s).
 
 ### Path B — Asset library (Kenney / OpenGameArt)
 

@@ -85,6 +85,44 @@ enum Cmd {
         #[arg(long, short, default_value = "spritesheet.png")]
         output: PathBuf,
     },
+    /// Generate an image via local ComfyUI (localhost:8188) using the SDXL pixel-art workflow
+    Gen {
+        /// Positive prompt
+        prompt: String,
+        /// Negative prompt (overrides default)
+        #[arg(long)]
+        negative: Option<String>,
+        /// Workflow template path (defaults to bundled sdxl-pixel-art.json)
+        #[arg(long)]
+        workflow: Option<PathBuf>,
+        /// Checkpoint name (must exist in ComfyUI/models/checkpoints/)
+        #[arg(long, default_value = "sd_xl_base_1.0.safetensors")]
+        model: String,
+        /// LoRA name (must exist in ComfyUI/models/loras/). Pass "none" to disable.
+        #[arg(long, default_value = "pixel-art-xl-v1.1.safetensors")]
+        lora: String,
+        /// Generation size, e.g. "1024x1024" or just "1024"
+        #[arg(long, default_value = "1024x1024")]
+        size: String,
+        /// Sampler steps
+        #[arg(long, default_value_t = 25)]
+        steps: u32,
+        /// CFG scale
+        #[arg(long, default_value_t = 7.5)]
+        cfg: f32,
+        /// Seed (omit for random)
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Output PNG path (defaults to ./pix-gen-<seed>.png)
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+        /// After generating, run `process` to downscale + palette-snap to project config
+        #[arg(long)]
+        pixelify: bool,
+        /// ComfyUI base URL
+        #[arg(long, default_value = "http://localhost:8188")]
+        host: String,
+    },
 }
 
 // ===================== PALETTES =====================
@@ -226,6 +264,33 @@ fn main() {
         Cmd::Dither { input, palette, algo, output } => cmd_dither(&input, palette.as_deref(), &algo, output.as_deref()),
         Cmd::Process { input, to, palette, algo, output } => cmd_process(&input, to.as_deref(), palette.as_deref(), &algo, output.as_deref()),
         Cmd::Pack { dir, cell, cols, output } => cmd_pack(&dir, cell.as_deref(), cols, &output),
+        Cmd::Gen {
+            prompt,
+            negative,
+            workflow,
+            model,
+            lora,
+            size,
+            steps,
+            cfg,
+            seed,
+            output,
+            pixelify,
+            host,
+        } => cmd_gen(
+            &prompt,
+            negative.as_deref(),
+            workflow.as_deref(),
+            &model,
+            &lora,
+            &size,
+            steps,
+            cfg,
+            seed,
+            output.as_deref(),
+            pixelify,
+            &host,
+        ),
     }
 }
 
@@ -523,6 +588,381 @@ struct FrameMeta {
     y: u32,
     w: u32,
     h: u32,
+}
+
+// ===================== COMFYUI GENERATION =====================
+
+fn default_workflow_path() -> PathBuf {
+    // 1. ~/.claude/skills/pixel-pipeline/workflows/sdxl-pixel-art.json (installed location)
+    let installed = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".claude/skills/pixel-pipeline/workflows/sdxl-pixel-art.json"));
+    if let Some(p) = &installed {
+        if p.exists() {
+            return p.clone();
+        }
+    }
+    // 2. Sibling of binary (when running from cargo install path)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let candidate = parent.join("workflows/sdxl-pixel-art.json");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    // 3. Source repo (when running from `cargo run` in the repo)
+    let repo = std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join("Desktop/claude/repos/skills/pixel-pipeline/workflows/sdxl-pixel-art.json"));
+    if let Some(p) = &repo {
+        if p.exists() {
+            return p.clone();
+        }
+    }
+    PathBuf::from("workflows/sdxl-pixel-art.json")
+}
+
+fn comfyui_running(host: &str) -> bool {
+    let url = format!("{}/system_stats", host.trim_end_matches('/'));
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "--max-time",
+            "3",
+            &url,
+        ])
+        .output();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).trim() == "200",
+        _ => false,
+    }
+}
+
+fn curl_post_json(url: &str, body: &str) -> Result<String, String> {
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "--data",
+            body,
+            url,
+        ])
+        .output()
+        .map_err(|e| format!("curl: {}", e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "curl POST {} failed: {}",
+            url,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+fn curl_get(url: &str) -> Result<String, String> {
+    let out = std::process::Command::new("curl")
+        .args(["-s", url])
+        .output()
+        .map_err(|e| format!("curl: {}", e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "curl GET {} failed: {}",
+            url,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+fn curl_download(url: &str, to: &Path) -> Result<(), String> {
+    let out = std::process::Command::new("curl")
+        .args(["-s", "-o", to.to_str().unwrap_or(""), url])
+        .output()
+        .map_err(|e| format!("curl: {}", e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "curl DOWNLOAD {} failed: {}",
+            url,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(())
+}
+
+fn random_seed() -> u64 {
+    // pseudo-random — uses current time + pid xor
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let pid = std::process::id() as u64;
+    nanos ^ pid.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_gen(
+    prompt: &str,
+    negative: Option<&str>,
+    workflow_path: Option<&Path>,
+    model: &str,
+    lora: &str,
+    size: &str,
+    steps: u32,
+    cfg: f32,
+    seed: Option<u64>,
+    output: Option<&Path>,
+    pixelify: bool,
+    host: &str,
+) {
+    if !comfyui_running(host) {
+        eprintln!(
+            "ComfyUI not reachable at {}.\n  Start it: open /Applications/ComfyUI.app\n  Or pass --host <url> if running elsewhere.",
+            host
+        );
+        std::process::exit(1);
+    }
+
+    // Load workflow template
+    let template_path = workflow_path
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(default_workflow_path);
+    if !template_path.exists() {
+        eprintln!("Workflow template not found at {}", template_path.display());
+        eprintln!("Re-install the skill (cp workflows/ to ~/.claude/skills/pixel-pipeline/) or pass --workflow <path>.");
+        std::process::exit(1);
+    }
+    let template_str = match fs::read_to_string(&template_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("read workflow {}: {}", template_path.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    let mut workflow: serde_json::Value = match serde_json::from_str(&template_str) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("parse workflow: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Parameterize
+    let (w, h) = parse_size(size);
+    let actual_seed = seed.unwrap_or_else(random_seed);
+
+    // Node IDs from the bundled template (see _meta.tunable_nodes in the JSON)
+    set_input(&mut workflow, "4", "ckpt_name", serde_json::Value::String(model.to_string()));
+    set_input(&mut workflow, "5", "width", serde_json::json!(w));
+    set_input(&mut workflow, "5", "height", serde_json::json!(h));
+    set_input(&mut workflow, "6", "text", serde_json::Value::String(prompt.to_string()));
+    if let Some(n) = negative {
+        set_input(&mut workflow, "7", "text", serde_json::Value::String(n.to_string()));
+    }
+    set_input(&mut workflow, "3", "seed", serde_json::json!(actual_seed));
+    set_input(&mut workflow, "3", "steps", serde_json::json!(steps));
+    set_input(&mut workflow, "3", "cfg", serde_json::json!(cfg));
+
+    // LoRA handling: if "none", swap KSampler.model + CLIPTextEncode.clip to point at "4" directly
+    if lora.eq_ignore_ascii_case("none") {
+        if let Some(node) = workflow.get_mut("3").and_then(|n| n.get_mut("inputs")) {
+            node["model"] = serde_json::json!(["4", 0]);
+        }
+        if let Some(node) = workflow.get_mut("6").and_then(|n| n.get_mut("inputs")) {
+            node["clip"] = serde_json::json!(["4", 1]);
+        }
+        if let Some(node) = workflow.get_mut("7").and_then(|n| n.get_mut("inputs")) {
+            node["clip"] = serde_json::json!(["4", 1]);
+        }
+        // Remove the LoRA node
+        if let Some(map) = workflow.as_object_mut() {
+            map.remove("10");
+        }
+    } else {
+        set_input(&mut workflow, "10", "lora_name", serde_json::Value::String(lora.to_string()));
+    }
+
+    // Strip _meta keys before sending (ComfyUI doesn't care but it's tidier)
+    if let Some(map) = workflow.as_object_mut() {
+        map.remove("_meta");
+        for (_, v) in map.iter_mut() {
+            if let Some(node) = v.as_object_mut() {
+                node.remove("_meta");
+            }
+        }
+    }
+
+    // Submit
+    let body = serde_json::json!({ "prompt": workflow }).to_string();
+    let url = format!("{}/prompt", host.trim_end_matches('/'));
+    let response = match curl_post_json(&url, &body) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("submit failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(&response) {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("ComfyUI returned non-JSON response:\n{}", response);
+            std::process::exit(1);
+        }
+    };
+
+    // ComfyUI validation errors are returned with "error" or "node_errors" keys
+    if let Some(error) = parsed.get("error").or_else(|| parsed.get("node_errors")) {
+        eprintln!("ComfyUI rejected the workflow:\n{}", serde_json::to_string_pretty(error).unwrap_or_default());
+        eprintln!("\nCommon causes:");
+        eprintln!("  - Checkpoint '{}' not in ComfyUI/models/checkpoints/", model);
+        if !lora.eq_ignore_ascii_case("none") {
+            eprintln!("  - LoRA '{}' not in ComfyUI/models/loras/ (pass --lora none to skip)", lora);
+        }
+        std::process::exit(1);
+    }
+
+    let prompt_id = match parsed.get("prompt_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            eprintln!("No prompt_id in response: {}", response);
+            std::process::exit(1);
+        }
+    };
+
+    eprintln!("Queued prompt {} — generating {}x{} ({} steps, seed {})...", prompt_id, w, h, steps, actual_seed);
+
+    // Poll
+    let history_url = format!("{}/history/{}", host.trim_end_matches('/'), prompt_id);
+    let start = std::time::Instant::now();
+    let timeout_secs = 300; // 5 min
+    let mut filename: Option<String> = None;
+    let mut subfolder: String = String::new();
+    let mut last_print = std::time::Instant::now();
+
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        if start.elapsed().as_secs() > timeout_secs {
+            eprintln!("Timed out waiting for generation after {}s.", timeout_secs);
+            std::process::exit(1);
+        }
+        if last_print.elapsed().as_secs() >= 5 {
+            eprint!(".");
+            last_print = std::time::Instant::now();
+        }
+        let body = match curl_get(&history_url) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if body.trim().is_empty() {
+            continue;
+        }
+        let h: serde_json::Value = match serde_json::from_str(&body) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let entry = match h.get(&prompt_id) {
+            Some(e) => e,
+            None => continue,
+        };
+        // Walk outputs to find a saved image
+        if let Some(outputs) = entry.get("outputs").and_then(|v| v.as_object()) {
+            for (_node_id, node_out) in outputs.iter() {
+                if let Some(images) = node_out.get("images").and_then(|v| v.as_array()) {
+                    if let Some(first) = images.first() {
+                        let fn_ = first.get("filename").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let sf = first.get("subfolder").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        if !fn_.is_empty() {
+                            filename = Some(fn_);
+                            subfolder = sf;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if filename.is_some() {
+            break;
+        }
+    }
+    let filename = filename.unwrap();
+    eprintln!("\nGenerated: {} (subfolder: {:?})", filename, subfolder);
+
+    // Download
+    let view_url = format!(
+        "{}/view?filename={}&subfolder={}&type=output",
+        host.trim_end_matches('/'),
+        urlencode(&filename),
+        urlencode(&subfolder)
+    );
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(format!("pix-gen-{}.png", actual_seed)));
+    if let Err(e) = curl_download(&view_url, &out_path) {
+        eprintln!("download: {}", e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({}x{}, seed {})", out_path.display(), w, h, actual_seed);
+
+    // Optional pixelify pass
+    if pixelify {
+        let cfg = read_config();
+        let scale = cfg.as_ref().map(|c| c.scale).unwrap_or(64);
+        let palette = cfg.as_ref().map(|c| c.palette.clone()).unwrap_or_else(|| "endesga-32".to_string());
+        let pal_vec = resolve_palette(Some(&palette));
+        let img = match image::open(&out_path) {
+            Ok(i) => i.to_rgba8(),
+            Err(e) => {
+                eprintln!("could not open generated image for pixelify: {}", e);
+                return;
+            }
+        };
+        let resized = image::imageops::resize(&img, scale, scale, FilterType::Nearest);
+        let result = floyd_steinberg(&resized, &pal_vec);
+        let pix_path = out_path.with_extension("pix.png");
+        if let Err(e) = result.save(&pix_path) {
+            eprintln!("save pixelified: {}", e);
+            return;
+        }
+        println!("wrote {} (downscaled to {}x{}, palette {})", pix_path.display(), scale, scale, palette);
+    }
+}
+
+fn set_input(workflow: &mut serde_json::Value, node_id: &str, key: &str, value: serde_json::Value) {
+    if let Some(node) = workflow.get_mut(node_id) {
+        if let Some(inputs) = node.get_mut("inputs") {
+            if let Some(map) = inputs.as_object_mut() {
+                map.insert(key.to_string(), value);
+            }
+        }
+    }
+}
+
+fn urlencode(s: &str) -> String {
+    // Minimal URL encoding for filenames / subfolders. Replaces space and common
+    // ascii specials that may appear in filenames.
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => out.push(c),
+            _ => {
+                let mut buf = [0u8; 4];
+                let bytes = c.encode_utf8(&mut buf);
+                for b in bytes.as_bytes() {
+                    out.push_str(&format!("%{:02X}", b));
+                }
+            }
+        }
+    }
+    out
 }
 
 fn cmd_pack(dir: &Path, cell: Option<&str>, cols: Option<u32>, output: &Path) {
