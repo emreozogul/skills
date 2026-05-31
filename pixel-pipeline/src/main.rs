@@ -137,6 +137,9 @@ enum Cmd {
         /// Generate N images (seeds = base + 0..N). Useful for picking the best from variations.
         #[arg(long, default_value_t = 1)]
         batch: u32,
+        /// After --batch, pack all outputs into a spritesheet PNG + JSON metadata. Implies --bg-remove + --pixelify.
+        #[arg(long)]
+        pack: bool,
         /// ComfyUI base URL. Empty = auto-detect (tries 8000 then 8188).
         #[arg(long, default_value = "")]
         host: String,
@@ -147,9 +150,24 @@ enum Cmd {
     Mask {
         /// Reference image (mask matches its size)
         input: PathBuf,
-        /// Rectangle as X,Y,W,H (px) — area to mark white (= regenerate). Or "X,Y,W,H,..." for multiple rects.
+        /// Rectangle(s) as X,Y,W,H[,X,Y,W,H,...]
         #[arg(long)]
-        rect: String,
+        rect: Option<String>,
+        /// Circle(s) as X,Y,R[,X,Y,R,...]
+        #[arg(long)]
+        circle: Option<String>,
+        /// Ellipse(s) as X,Y,RX,RY[,...]
+        #[arg(long)]
+        ellipse: Option<String>,
+        /// Polygon as X1,Y1,X2,Y2,...,Xn,Yn (closed automatically)
+        #[arg(long)]
+        polygon: Option<String>,
+        /// Grow the mask outward by N pixels (dilation)
+        #[arg(long, default_value_t = 0)]
+        grow: u32,
+        /// Invert the mask (regenerate everywhere EXCEPT the shapes)
+        #[arg(long)]
+        invert: bool,
         /// Output mask PNG
         #[arg(long, short, default_value = "mask.png")]
         output: PathBuf,
@@ -166,6 +184,32 @@ enum Cmd {
         /// Output PNG (defaults to <stem>-cut.png)
         #[arg(long, short)]
         output: Option<PathBuf>,
+    },
+    /// Despeckle / clean up generated sprites — 3x3 median filter, skips transparent pixels
+    Clean {
+        input: PathBuf,
+        /// Number of median passes (1 = subtle, 2-3 = aggressive)
+        #[arg(long, default_value_t = 1)]
+        passes: u32,
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
+    /// Preview a PNG in the terminal using truecolor half-blocks
+    Preview {
+        input: PathBuf,
+        /// Max width in chars (image is downscaled if larger)
+        #[arg(long, default_value_t = 64)]
+        width: u32,
+    },
+    /// Extract a palette from a reference image (most common colors)
+    PaletteFrom {
+        input: PathBuf,
+        /// Number of colors to keep
+        #[arg(long, default_value_t = 32)]
+        colors: u32,
+        /// Quantization bucket size (1-32, lower = finer)
+        #[arg(long, default_value_t = 8)]
+        bucket: u32,
     },
 }
 
@@ -326,6 +370,7 @@ fn main() {
             pixelify,
             bg_remove,
             batch,
+            pack,
             host,
         } => cmd_gen(GenArgs {
             prompt: &prompt,
@@ -342,17 +387,43 @@ fn main() {
             from: from.as_deref(),
             mask: mask.as_deref(),
             output: output.as_deref(),
-            pixelify,
-            bg_remove,
+            pixelify: pixelify || pack,
+            bg_remove: bg_remove || pack,
             batch,
+            pack,
             host: &host,
         }),
         Cmd::Pipelines => cmd_pipelines(),
-        Cmd::Mask { input, rect, output } => cmd_mask(&input, &rect, &output),
+        Cmd::Mask { input, rect, circle, ellipse, polygon, grow, invert, output } => {
+            cmd_mask(MaskArgs {
+                input: &input,
+                rect: rect.as_deref(),
+                circle: circle.as_deref(),
+                ellipse: ellipse.as_deref(),
+                polygon: polygon.as_deref(),
+                grow,
+                invert,
+                output: &output,
+            })
+        }
         Cmd::BgRemove { input, tolerance, sample, output } => {
             cmd_bg_remove(&input, tolerance, sample.as_deref(), output.as_deref())
         }
+        Cmd::Clean { input, passes, output } => cmd_clean(&input, passes, output.as_deref()),
+        Cmd::Preview { input, width } => cmd_preview(&input, width),
+        Cmd::PaletteFrom { input, colors, bucket } => cmd_palette_from(&input, colors, bucket),
     }
+}
+
+struct MaskArgs<'a> {
+    input: &'a Path,
+    rect: Option<&'a str>,
+    circle: Option<&'a str>,
+    ellipse: Option<&'a str>,
+    polygon: Option<&'a str>,
+    grow: u32,
+    invert: bool,
+    output: &'a Path,
 }
 
 fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, output: Option<&Path>) {
@@ -468,43 +539,365 @@ fn cmd_bg_remove(input: &Path, tolerance: u32, sample: Option<&str>, output: Opt
     );
 }
 
-fn cmd_mask(input: &Path, rect_str: &str, output: &Path) {
-    let img = match image::open(input) {
+fn parse_nums(s: &str) -> Vec<i32> {
+    s.split(',')
+        .map(|p| p.trim().parse::<i32>().unwrap_or(0))
+        .collect()
+}
+
+fn draw_rect_mask(mask: &mut RgbaImage, quad: &[i32]) {
+    let (w, h) = mask.dimensions();
+    let (rx, ry, rw, rh) = (quad[0], quad[1], quad[2], quad[3]);
+    let x_start = rx.max(0) as u32;
+    let y_start = ry.max(0) as u32;
+    let x_end = ((rx + rw) as u32).min(w);
+    let y_end = ((ry + rh) as u32).min(h);
+    for y in y_start..y_end {
+        for x in x_start..x_end {
+            mask.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+        }
+    }
+}
+
+fn draw_ellipse_mask(mask: &mut RgbaImage, cx: i32, cy: i32, rx: i32, ry: i32) {
+    let (w, h) = mask.dimensions();
+    if rx <= 0 || ry <= 0 {
+        return;
+    }
+    let rx2 = (rx as i64) * (rx as i64);
+    let ry2 = (ry as i64) * (ry as i64);
+    let x_min = (cx - rx).max(0) as u32;
+    let x_max = ((cx + rx) as u32).min(w - 1);
+    let y_min = (cy - ry).max(0) as u32;
+    let y_max = ((cy + ry) as u32).min(h - 1);
+    for y in y_min..=y_max {
+        for x in x_min..=x_max {
+            let dx = (x as i32 - cx) as i64;
+            let dy = (y as i32 - cy) as i64;
+            // (dx/rx)^2 + (dy/ry)^2 <= 1 — cross-multiplied to avoid floats
+            if dx * dx * ry2 + dy * dy * rx2 <= rx2 * ry2 {
+                mask.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+            }
+        }
+    }
+}
+
+fn draw_polygon_mask(mask: &mut RgbaImage, pts: &[(i32, i32)]) {
+    // Scanline fill using even-odd rule.
+    if pts.len() < 3 {
+        return;
+    }
+    let (w, h) = mask.dimensions();
+    let y_min = pts.iter().map(|p| p.1).min().unwrap_or(0).max(0);
+    let y_max = pts.iter().map(|p| p.1).max().unwrap_or(0).min(h as i32 - 1);
+    let n = pts.len();
+    for y in y_min..=y_max {
+        let mut crossings: Vec<f32> = Vec::new();
+        for i in 0..n {
+            let (x1, y1) = pts[i];
+            let (x2, y2) = pts[(i + 1) % n];
+            if (y1 <= y && y2 > y) || (y2 <= y && y1 > y) {
+                let t = (y - y1) as f32 / (y2 - y1) as f32;
+                crossings.push(x1 as f32 + t * (x2 - x1) as f32);
+            }
+        }
+        crossings.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        for chunk in crossings.chunks(2) {
+            if chunk.len() == 2 {
+                let x_start = chunk[0].max(0.0) as u32;
+                let x_end = (chunk[1].ceil() as u32).min(w);
+                if y >= 0 && (y as u32) < h {
+                    for x in x_start..x_end {
+                        mask.put_pixel(x, y as u32, Rgba([255, 255, 255, 255]));
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn dilate_mask(mask: &mut RgbaImage, radius: u32) {
+    if radius == 0 {
+        return;
+    }
+    let (w, h) = mask.dimensions();
+    let r = radius as i32;
+    let src = mask.clone();
+    for y in 0..h {
+        for x in 0..w {
+            // If any pixel within radius in the source is white, set this one white.
+            let xi = x as i32;
+            let yi = y as i32;
+            let x_min = (xi - r).max(0) as u32;
+            let x_max = ((xi + r) as u32).min(w - 1);
+            let y_min = (yi - r).max(0) as u32;
+            let y_max = ((yi + r) as u32).min(h - 1);
+            let mut any_white = false;
+            'outer: for yy in y_min..=y_max {
+                for xx in x_min..=x_max {
+                    if src.get_pixel(xx, yy).0[0] > 127 {
+                        any_white = true;
+                        break 'outer;
+                    }
+                }
+            }
+            if any_white {
+                mask.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+            }
+        }
+    }
+}
+
+fn invert_mask(mask: &mut RgbaImage) {
+    let (w, h) = mask.dimensions();
+    for y in 0..h {
+        for x in 0..w {
+            let p = mask.get_pixel(x, y);
+            let inv = 255 - p.0[0];
+            mask.put_pixel(x, y, Rgba([inv, inv, inv, 255]));
+        }
+    }
+}
+
+fn cmd_mask(args: MaskArgs) {
+    let img = match image::open(args.input) {
         Ok(i) => i,
         Err(e) => {
-            eprintln!("open {}: {}", input.display(), e);
+            eprintln!("open {}: {}", args.input.display(), e);
             std::process::exit(1);
         }
     };
     let (w, h) = img.dimensions();
     let mut mask = RgbaImage::from_pixel(w, h, Rgba([0, 0, 0, 255]));
 
-    // Parse rects: comma-separated quads of u32 (X,Y,W,H repeated)
-    let nums: Vec<u32> = rect_str
-        .split(',')
-        .map(|s| s.trim().parse::<u32>().unwrap_or(0))
-        .collect();
-    if nums.len() % 4 != 0 || nums.is_empty() {
-        eprintln!("--rect must be one or more 'X,Y,W,H' quads (got {} values)", nums.len());
+    let mut shape_count = 0u32;
+
+    if let Some(s) = args.rect {
+        let nums = parse_nums(s);
+        if nums.len() % 4 != 0 || nums.is_empty() {
+            eprintln!("--rect must be 'X,Y,W,H' quads (got {} values)", nums.len());
+            std::process::exit(2);
+        }
+        for quad in nums.chunks(4) {
+            draw_rect_mask(&mut mask, quad);
+            shape_count += 1;
+        }
+    }
+    if let Some(s) = args.circle {
+        let nums = parse_nums(s);
+        if nums.len() % 3 != 0 || nums.is_empty() {
+            eprintln!("--circle must be 'X,Y,R' triples (got {} values)", nums.len());
+            std::process::exit(2);
+        }
+        for tri in nums.chunks(3) {
+            draw_ellipse_mask(&mut mask, tri[0], tri[1], tri[2], tri[2]);
+            shape_count += 1;
+        }
+    }
+    if let Some(s) = args.ellipse {
+        let nums = parse_nums(s);
+        if nums.len() % 4 != 0 || nums.is_empty() {
+            eprintln!("--ellipse must be 'X,Y,RX,RY' quads (got {} values)", nums.len());
+            std::process::exit(2);
+        }
+        for quad in nums.chunks(4) {
+            draw_ellipse_mask(&mut mask, quad[0], quad[1], quad[2], quad[3]);
+            shape_count += 1;
+        }
+    }
+    if let Some(s) = args.polygon {
+        let nums = parse_nums(s);
+        if nums.len() < 6 || nums.len() % 2 != 0 {
+            eprintln!("--polygon needs at least 3 X,Y points (got {} values)", nums.len());
+            std::process::exit(2);
+        }
+        let pts: Vec<(i32, i32)> = nums.chunks(2).map(|c| (c[0], c[1])).collect();
+        draw_polygon_mask(&mut mask, &pts);
+        shape_count += 1;
+    }
+
+    if shape_count == 0 {
+        eprintln!("specify at least one of --rect / --circle / --ellipse / --polygon");
         std::process::exit(2);
     }
 
-    for quad in nums.chunks(4) {
-        let (rx, ry, rw, rh) = (quad[0], quad[1], quad[2], quad[3]);
-        let x_end = (rx + rw).min(w);
-        let y_end = (ry + rh).min(h);
-        for y in ry..y_end {
-            for x in rx..x_end {
-                mask.put_pixel(x, y, Rgba([255, 255, 255, 255]));
-            }
-        }
+    if args.grow > 0 {
+        dilate_mask(&mut mask, args.grow);
+    }
+    if args.invert {
+        invert_mask(&mut mask);
     }
 
-    if let Err(e) = mask.save(output) {
-        eprintln!("save mask {}: {}", output.display(), e);
+    if let Err(e) = mask.save(args.output) {
+        eprintln!("save mask {}: {}", args.output.display(), e);
         std::process::exit(1);
     }
-    println!("wrote {} ({}x{}, {} rect(s))", output.display(), w, h, nums.len() / 4);
+    println!(
+        "wrote {} ({}x{}, {} shape(s){}{})",
+        args.output.display(),
+        w,
+        h,
+        shape_count,
+        if args.grow > 0 { format!(", grown {}px", args.grow) } else { String::new() },
+        if args.invert { ", inverted".to_string() } else { String::new() },
+    );
+}
+
+fn cmd_clean(input: &Path, passes: u32, output: Option<&Path>) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let mut current = img;
+    for _ in 0..passes.max(1) {
+        let src = current.clone();
+        let mut next = src.clone();
+        // 3x3 median filter, skipping fully transparent pixels
+        for y in 1..h.saturating_sub(1) {
+            for x in 1..w.saturating_sub(1) {
+                let center = src.get_pixel(x, y);
+                if center.0[3] == 0 {
+                    continue;
+                }
+                // Collect non-transparent neighborhood
+                let mut rs = Vec::with_capacity(9);
+                let mut gs = Vec::with_capacity(9);
+                let mut bs = Vec::with_capacity(9);
+                let mut a_count = 0u32;
+                for dy in -1..=1i32 {
+                    for dx in -1..=1i32 {
+                        let p = src.get_pixel(
+                            (x as i32 + dx) as u32,
+                            (y as i32 + dy) as u32,
+                        );
+                        if p.0[3] > 0 {
+                            rs.push(p.0[0]);
+                            gs.push(p.0[1]);
+                            bs.push(p.0[2]);
+                        }
+                        if p.0[3] > 127 {
+                            a_count += 1;
+                        }
+                    }
+                }
+                // If center is a near-isolated pixel (few opaque neighbors), make transparent
+                if a_count <= 2 {
+                    next.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                    continue;
+                }
+                rs.sort_unstable();
+                gs.sort_unstable();
+                bs.sort_unstable();
+                let mid = rs.len() / 2;
+                next.put_pixel(x, y, Rgba([rs[mid], gs[mid], bs[mid], center.0[3]]));
+            }
+        }
+        current = next;
+    }
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| {
+            let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            let parent = input.parent().unwrap_or_else(|| Path::new("."));
+            parent.join(format!("{}-clean.png", stem))
+        });
+    if let Err(e) = current.save(&out_path) {
+        eprintln!("save {}: {}", out_path.display(), e);
+        std::process::exit(1);
+    }
+    println!("wrote {} ({} pass{})", out_path.display(), passes, if passes == 1 { "" } else { "es" });
+}
+
+fn cmd_preview(input: &Path, max_width: u32) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let (w, h) = img.dimensions();
+    let target_w = max_width.min(w).max(1);
+    let target_h = ((h as f32) * (target_w as f32) / (w as f32)).round() as u32;
+    let target_h = target_h.max(2);
+    let resized = image::imageops::resize(&img, target_w, target_h, FilterType::Nearest);
+    // Use half-block (▀): top pixel = fg, bottom pixel = bg.
+    let mut y = 0u32;
+    while y < target_h {
+        let top_row = y;
+        let bot_row = y + 1;
+        for x in 0..target_w {
+            let top = resized.get_pixel(x, top_row);
+            let bot = if bot_row < target_h {
+                *resized.get_pixel(x, bot_row)
+            } else {
+                Rgba([0, 0, 0, 0])
+            };
+            // Treat transparent as black-ish for preview; alpha-blend onto checkerboard would
+            // be nicer but is over-engineering for v1.
+            let (tr, tg, tb) = if top.0[3] == 0 {
+                (0, 0, 0)
+            } else {
+                (top.0[0], top.0[1], top.0[2])
+            };
+            let (br, bg, bb) = if bot.0[3] == 0 {
+                (0, 0, 0)
+            } else {
+                (bot.0[0], bot.0[1], bot.0[2])
+            };
+            print!(
+                "\x1b[38;2;{};{};{}m\x1b[48;2;{};{};{}m\u{2580}",
+                tr, tg, tb, br, bg, bb
+            );
+        }
+        println!("\x1b[0m");
+        y += 2;
+    }
+}
+
+fn cmd_palette_from(input: &Path, n_colors: u32, bucket: u32) {
+    let img = match image::open(input) {
+        Ok(i) => i.to_rgba8(),
+        Err(e) => {
+            eprintln!("open {}: {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+    let bucket = bucket.max(1).min(64);
+    let (w, h) = img.dimensions();
+
+    let mut counts: std::collections::HashMap<(u8, u8, u8), u64> = std::collections::HashMap::new();
+    for y in 0..h {
+        for x in 0..w {
+            let p = img.get_pixel(x, y);
+            if p.0[3] < 128 {
+                continue;
+            }
+            // Quantize each channel into bucket-sized bins so near-identical
+            // colors fold into a single key.
+            let r = (p.0[0] / bucket as u8) * bucket as u8;
+            let g = (p.0[1] / bucket as u8) * bucket as u8;
+            let b = (p.0[2] / bucket as u8) * bucket as u8;
+            *counts.entry((r, g, b)).or_insert(0) += 1;
+        }
+    }
+    let mut sorted: Vec<((u8, u8, u8), u64)> = counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.truncate(n_colors as usize);
+
+    eprintln!(
+        "Extracted {} colors from {} (bucket {})",
+        sorted.len(),
+        input.display(),
+        bucket
+    );
+    for ((r, g, b), count) in &sorted {
+        println!("#{:02X}{:02X}{:02X}  ({} px)", r, g, b, count);
+    }
 }
 
 struct GenArgs<'a> {
@@ -525,6 +918,7 @@ struct GenArgs<'a> {
     pixelify: bool,
     bg_remove: bool,
     batch: u32,
+    pack: bool,
     host: &'a str,
 }
 
@@ -1244,6 +1638,7 @@ fn cmd_gen(args: GenArgs) {
         .output
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from(format!("pix-{}-{}.png", args.pipeline, base_seed)));
+    let mut produced_pix_paths: Vec<PathBuf> = Vec::with_capacity(batch_n as usize);
 
     for idx in 0..batch_n {
         let actual_seed = base_seed.wrapping_add(idx as u64);
@@ -1433,7 +1828,75 @@ fn cmd_gen(args: GenArgs) {
                 scale,
                 palette
             );
+            produced_pix_paths.push(pix_path);
         }
+    }
+
+    // --pack: collect produced pix.png frames, pack into a spritesheet.
+    if args.pack {
+        if produced_pix_paths.is_empty() {
+            eprintln!("--pack requested but no pixelified frames were produced (need --batch ≥ 1).");
+            return;
+        }
+        let sheet_path = base_out_path.with_extension("sheet.png");
+        // Group the produced files into a temp dir referenced as a directory for cmd_pack.
+        // Simpler: build the sheet here without reusing cmd_pack so we can pass
+        // explicit ordered paths.
+        let cell_w_h: (u32, u32) = match image::open(&produced_pix_paths[0]) {
+            Ok(i) => i.dimensions(),
+            Err(e) => {
+                eprintln!("read first frame for pack: {}", e);
+                return;
+            }
+        };
+        let (cw, ch) = cell_w_h;
+        let n = produced_pix_paths.len() as u32;
+        let cols = (n as f64).sqrt().ceil() as u32;
+        let rows = (n + cols - 1) / cols;
+        let mut sheet = RgbaImage::new(cols * cw, rows * ch);
+        let mut frames_meta = Vec::with_capacity(n as usize);
+        for (i, p) in produced_pix_paths.iter().enumerate() {
+            let img = match image::open(p) {
+                Ok(i) => i.to_rgba8(),
+                Err(e) => {
+                    eprintln!("read {}: {}", p.display(), e);
+                    continue;
+                }
+            };
+            let col = (i as u32) % cols;
+            let row = (i as u32) / cols;
+            let px = col * cw;
+            let py = row * ch;
+            let (fw, fh) = img.dimensions();
+            for yy in 0..fh.min(ch) {
+                for xx in 0..fw.min(cw) {
+                    sheet.put_pixel(px + xx, py + yy, *img.get_pixel(xx, yy));
+                }
+            }
+            frames_meta.push(serde_json::json!({
+                "name": p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+                "x": px,
+                "y": py,
+                "w": fw.min(cw),
+                "h": fh.min(ch),
+                "seed": base_seed.wrapping_add(i as u64),
+            }));
+        }
+        if let Err(e) = sheet.save(&sheet_path) {
+            eprintln!("save sheet: {}", e);
+            return;
+        }
+        let json_path = sheet_path.with_extension("json");
+        let meta = serde_json::json!({
+            "image": sheet_path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            "cell": [cw, ch],
+            "cols": cols,
+            "rows": rows,
+            "frames": frames_meta,
+        });
+        let _ = fs::write(&json_path, serde_json::to_string_pretty(&meta).unwrap_or_default());
+        println!("wrote {} ({} cells, {}x{} each)", sheet_path.display(), n, cw, ch);
+        println!("wrote {}", json_path.display());
     }
 }
 

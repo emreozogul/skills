@@ -183,3 +183,77 @@ The `weight` parameter in `workflows/ipadapter.json` node 14 controls the trade-
 
 For consistent animation cycles: 0.85 is the sweet spot.
 
+
+---
+
+# ControlNet OpenPose (optional, for `pix gen --pipeline pose`)
+
+ControlNet OpenPose unlocks **pose-locked generation**: pass a stick-figure pose reference and the output character will mimic that exact pose.
+
+The killer combo is `--pipeline ipadapter --pipeline pose` — IP-Adapter locks identity, ControlNet locks pose. The result is a true animation cycle of the SAME character in SPECIFIC poses. (For now `pix gen` only supports one pipeline at a time; you'd run pose first, then run vary on the output with the IP-Adapter ref as a third stage. Multi-conditioning pipeline is a future v3.)
+
+## Setup (one-time, ~2.5 GB)
+
+### Step 1 — Download the OpenPose SDXL ControlNet model
+
+```bash
+mkdir -p ~/Documents/ComfyUI/models/controlnet
+curl -L -o ~/Documents/ComfyUI/models/controlnet/OpenPoseXL2.safetensors \
+  "https://huggingface.co/thibaud/controlnet-openpose-sdxl-1.0/resolve/main/OpenPoseXL2.safetensors?download=true"
+```
+
+ControlNetLoader and ControlNetApplyAdvanced are built into ComfyUI — no custom node install needed for this one (unlike IP-Adapter).
+
+### Step 2 — Use a stick-figure pose reference
+
+The pose reference should be a pre-rendered openpose stick figure (head circle + colored bones).
+
+Easy sources of pose references:
+- **Posenet of an existing photo** — drag any photo into ComfyUI UI with an `OpenposePreprocessor` node, save the stick-figure output as a PNG
+- **PoseMyArt** (https://posemy.art/) — pose a 3D mannequin, export as openpose JSON / image
+- **Civitai pose packs** — search "openpose" in Civitai for ready-made pose sets
+
+For game animation cycles you typically want ~4-8 stick-figure references per cycle (idle bob, walk frames 1-4, attack 1-3, etc.). Save them in `pose-refs/walk-1.png`, `pose-refs/walk-2.png`, etc.
+
+### Step 3 — Test
+
+```bash
+# Generate a base character first
+pix gen "pixel art knight, fantasy stance" --seed 42 --output ref-knight.png
+
+# Make a walk-cycle: 4 frames, each pose-locked to a stick figure
+for i in 1 2 3 4; do
+  pix gen "pixel art knight, walking" \
+    --pipeline pose \
+    --from pose-refs/walk-${i}.png \
+    --seed 100 \
+    --output knight-walk-${i}.png
+done
+```
+
+The result: 4 frames of a knight in the specific walk-cycle poses you provided.
+
+## Tuning the ControlNet strength
+
+The `strength` parameter in `workflows/pose.json` node 13:
+
+| Strength | Effect |
+|---|---|
+| 0.3-0.5 | Loose pose hint — character pose vaguely follows reference |
+| 0.6-0.8 | Balanced — clear pose match with creative interpretation |
+| 0.85-0.95 | Strict pose lock — every limb where the reference puts it |
+| 1.0 | Maximum — may produce stiff/awkward outputs |
+
+For consistent walk cycles: 0.85 is the sweet spot.
+
+## Troubleshooting
+
+**"Node 'ControlNetApplyAdvanced' not found"**
+→ Update ComfyUI. ControlNetApplyAdvanced has been built-in for a long time but very old versions only have the basic ControlNetApply.
+
+**"controlnet model file not found"**
+→ Filename mismatch. Verify `~/Documents/ComfyUI/models/controlnet/OpenPoseXL2.safetensors` exists exactly.
+
+**Output ignores the pose**
+→ Raise `strength` to 0.95. Also check the reference image — it should be a clear openpose stick figure (colored bones on black), not a regular photo. A photo would need an `OpenposePreprocessor` node added to the workflow first.
+
