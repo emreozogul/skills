@@ -78,8 +78,13 @@ const valid = distilled.filter(Boolean)
 
 phase('Merge')
 
+// The merge agent WRITES THE FILE ITSELF so the artifact survives a return-trip failure.
+const outPath = args.output_path || `./distillations/${(topic || 'distillation').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40)}.md`
+
 const merged = await agent(
-  `Merge these per-source distillations into ONE structured artifact on the topic: "${topic}".
+  `Merge these per-source distillations into ONE structured artifact on the topic: "${topic}", and SAVE IT YOURSELF with the Write tool.
+
+OUTPUT PATH (write the final markdown here with Write): ${outPath}
 
 PER-SOURCE DISTILLATIONS:
 ${JSON.stringify(valid, null, 2)}
@@ -93,15 +98,24 @@ Follow references/output-template.md. Specifically:
 - Action items + open questions
 
 Lead with provenance: list all sources. Preserve which source each non-obvious
-claim came from.`,
+claim came from. After writing the file, return a short summary: combined TL;DR
++ any cross-source conflicts.`,
   { label: 'merge', phase: 'Merge' }
 )
 
-return { sources: sources.map((s) => ({ id: s.id, title: s.title })), per_source: valid, merged_markdown: merged }
+// Return raw per-source distillations too, so the merge can be re-run from them if anything fails.
+return { sources: sources.map((s) => ({ id: s.id, title: s.title })), per_source: valid, output_path: outPath, summary: merged }
 ```
 
 ## After it returns
 
-Write `merged_markdown` to `./distillations/<topic-slug>-<date>.md`. Surface the
-combined TL;DR + any cross-source conflicts. Offer insight-vault capture of the
-strong, agreed-upon facts.
+The merge agent already wrote the file to `output_path`. Surface the returned
+`summary` (combined TL;DR + cross-source conflicts) and point to the file. Offer
+insight-vault capture of the strong, agreed-upon facts.
+
+**Resilience / recovery.** If the run fails after the Distill phase:
+- **Resume:** `Workflow({scriptPath, resumeFromRunId})` — completed per-source
+  agents return cached; only merge re-runs.
+- **Or re-merge:** the workflow returns `per_source` (raw). Re-run just the merge
+  agent from them. The merge agent writing the file directly makes a successful
+  merge durable even if the return trip dies.

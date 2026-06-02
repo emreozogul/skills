@@ -136,8 +136,13 @@ Your job: make the STRONGEST possible case that this is the WRONG choice. Steelm
 
 phase('Synthesize')
 
+// The memo agent WRITES THE FILE ITSELF so the artifact survives a return-trip failure.
+const outPath = brief.output_path || `./decisions/${(brief.decision || 'decision').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,40)}.md`
+
 const memo = await agent(
-  `Write a decision memo from this analysis. Be decisive but honest about confidence.
+  `Write a decision memo and SAVE IT YOURSELF with the Write tool.
+
+OUTPUT PATH (write the final markdown here with Write): ${outPath}
 
 BRIEF:
 ${JSON.stringify(brief, null, 2)}
@@ -151,18 +156,26 @@ ${JSON.stringify(scored.map((s) => ({ option: s.option, weighted: Number(s.weigh
 ADVERSARIAL ATTACK ON FRONT-RUNNER:
 ${JSON.stringify(attack, null, 2)}
 
-Follow references/memo-template.md. Lead with the recommendation + confidence (high/medium/low). Include: weighted scorecard table, why the winner, the deciding weakness of each runner-up, the premortem for the recommended choice + cheapest de-risk, the FLIP CONDITION (what fact would change the answer), and the smallest first step. If the attack verdict was should_flip or weakened, reflect that honestly — do not paper over it.`,
+Follow references/memo-template.md. Lead with the recommendation + confidence (high/medium/low). Include: weighted scorecard table, why the winner, the deciding weakness of each runner-up, the premortem for the recommended choice + cheapest de-risk, the FLIP CONDITION (what fact would change the answer), and the smallest first step. If the attack verdict was should_flip or weakened, reflect that honestly — do not paper over it. After writing the file, return a short summary: recommendation + confidence + flip condition + first step.`,
   { label: 'synthesize:memo', phase: 'Synthesize' }
 )
 
+// Return raw analysis too, so the memo can be re-synthesized from it if anything downstream fails.
 return {
   brief,
   ranking: scored.map((s) => ({ option: s.option, weighted: Number(s.weighted.toFixed(2)) })),
+  analyses: valid,
   attack,
-  memo_markdown: memo,
+  output_path: outPath,
+  summary: memo,
 }
 ```
 
 ## After it returns
 
-Write `memo_markdown` to `./decisions/<slug>-<date>.md`. Surface the recommendation + confidence + flip condition + first step to the user. The `ranking` and `attack` are already summarized in the memo.
+The memo agent already wrote the file to `output_path`. Surface the returned `summary` (recommendation + confidence + flip condition + first step) to the user and point to the file.
+
+**Resilience / recovery.** If the run fails after the Analyze phase:
+- **Resume:** `Workflow({scriptPath: "<from launch result>", resumeFromRunId: "<runId>"})` — completed option-agents + attack return cached; only synthesis re-runs.
+- **Or re-synthesize:** the workflow returns `analyses` (raw per-option) + `attack`. Re-run just the memo agent from them.
+- Because the memo agent writes the file directly, a successful synthesis is durable even if the workflow's return trip dies.
