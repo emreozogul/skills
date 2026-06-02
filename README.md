@@ -28,6 +28,18 @@ Originally built for market research (sizing / competitive / customer / trends),
 
 ---
 
+### [`decide/`](./decide) — Rigorous decision orchestrator (the sibling of full-research)
+
+Turns "I can't decide" into a reasoned recommendation. Collects a structured brief, fans out parallel analysis per option (steelman + premortem + second-order effects + weighted scoring), runs an adversarial attack on the front-runner, and writes a decision memo with recommendation, honest confidence, a flip condition, and the first concrete step.
+
+Pure markdown + Workflow orchestration — no binary. Research finds *what's true*; decide determines *what to do*.
+
+**Use when:** weighing options with real stakes — "should I X or Y", "which should I pick", "is it worth doing X", or any tradeoff you're stuck on.
+
+[Read more →](./decide/SKILL.md)
+
+---
+
 ### [`insight-vault/`](./insight-vault) — Personal knowledge library (capture / retrieve / evaluate)
 
 Turns text, files, URLs, or research output into atomic, provenance-backed insight files, keeps a rebuildable SQLite FTS5 index over them, and evaluates positions against your own library (supports / contradicts / qualifies + knowledge gaps). Stdlib-only Python engine bundled with the skill — no third-party packages.
