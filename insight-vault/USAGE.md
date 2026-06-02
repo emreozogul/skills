@@ -14,6 +14,7 @@ When to use which skill, with use cases and example usages.
 | Recall what you already know on a topic | **insight-find** (retrieve) | `/insight-find` | "what do I know about…" |
 | Pressure-test a decision / claim / plan | **insight-evaluate** | `/insight-evaluate` | "evaluate: …", "sanity-check…" |
 | See the library's size, coverage, conflicts | **insight-status** | `/insight-status` | "how big is my insight library?" |
+| Visualize / explore / strengthen connections | **insight-graph** | `/insight-graph` | "show my insight graph", "what contradicts X", "suggest links" |
 | Rebuild the index after editing files by hand | **insight-reindex** | `/insight-reindex` | "reindex my insights" |
 
 ---

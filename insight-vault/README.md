@@ -50,22 +50,26 @@ export INSIGHT_DB=/abs/path/to/index/insights.db   # optional
 ## Engine CLI (advanced)
 
 ```bash
-python3 engine/insight.py {add,search,related,get,link,reindex,validate,stats,vault-path,embed}
+python3 engine/insight.py {add,search,related,get,link,reindex,validate,stats,vault-path,embed,graph}
 ```
-Add `--pretty` (before or after the subcommand) for human-readable JSON.
+Add `--pretty` (before or after the subcommand) for human-readable JSON. The `graph` subcommand
+takes an action: `render` (`--format html|mermaid|json`), `neighbors`, `path`, `orphans`,
+`contradictions`, `clusters`, `suggest`.
 
 ## Tests
 
 ```bash
 python3 -m unittest discover -s engine/tests -t engine/tests -v
 ```
-21 tests covering frontmatter parse/serialize/validate, the SQLite index, and the CLI round-trips.
+31 tests covering frontmatter parse/serialize/validate, the SQLite index, the CLI round-trips, and
+the graph layer (neighbors/path/components/suggest/render).
 
 ## Files
 
-- [`SKILL.md`](./SKILL.md) — the skill (capture / retrieve / evaluate procedures).
+- [`SKILL.md`](./SKILL.md) — the skill (capture / retrieve / evaluate / graph procedures).
 - `engine/` — bundled stdlib Python CLI: `frontmatter.py`, `db.py` (SQLite FTS5),
-  `embeddings.py` (no-op stub, semantic-search-ready), `insight.py` (CLI), plus `tests/`.
+  `embeddings.py` (no-op stub, semantic-search-ready), `graph.py` (typed-relation knowledge graph +
+  HTML viewer), `insight.py` (CLI), plus `tests/`.
 
 ## Notes & limitations (v1)
 

@@ -1,6 +1,6 @@
 ---
 name: insight-vault
-description: Personal knowledge library — capture, organize, retrieve, and evaluate insights against your own notes. Use when the user wants to save/capture/file/remember an insight, finding, fact, quote, or research result (from text, a file/PDF, a URL, or research output); recall or look up what they already know about a topic; or evaluate, sanity-check, or pressure-test a position, claim, decision, or plan against their stored knowledge. Atomic markdown insight files indexed by SQLite FTS5; stdlib-only engine bundled with the skill.
+description: Personal knowledge library — capture, organize, retrieve, and evaluate insights against your own notes. Use when the user wants to save/capture/file/remember an insight, finding, fact, quote, or research result (from text, a file/PDF, a URL, or research output); recall or look up what they already know about a topic; or evaluate, sanity-check, or pressure-test a position, claim, decision, or plan against their stored knowledge; or visualize / explore / strengthen the connections between insights (the knowledge graph). Atomic markdown insight files indexed by SQLite FTS5, with a typed relation graph; stdlib-only engine bundled with the skill.
 ---
 
 # insight-vault
@@ -98,9 +98,15 @@ about gaps, and adversarial.
    python3 "$INSIGHT" search "<counter-argument terms>" --limit 10
    ```
    `get` the most relevant hits to read evidence, confidence, recency, and any `contradicts` relations.
-3. For a heavy call, dispatch a subagent to read many insights in its own context and return the
+3. **Walk the graph from your matched insights** — pull the whole connected argument, not just
+   keyword hits (surfaces contradictions you'd otherwise miss):
+   ```bash
+   python3 "$INSIGHT" graph neighbors --id <id> --depth 1
+   python3 "$INSIGHT" graph contradictions
+   ```
+4. For a heavy call, dispatch a subagent to read many insights in its own context and return the
    verdict; otherwise evaluate inline.
-4. **Produce the verdict:**
+5. **Produce the verdict:**
    - **Supports** — insights backing it (id + confidence)
    - **Contradicts** — insights against it (id + confidence)
    - **Qualifies** — nuance/conditions
@@ -109,6 +115,29 @@ about gaps, and adversarial.
    - **Knowledge gaps** — what's missing that would change the verdict; offer to research and capture it
 
    Be honest when the library is thin — say so rather than inventing support.
+
+## Graph
+
+Insights are nodes; typed relations (`supports`, `contradicts`, `refines`, `duplicates`,
+`supersedes`) are edges. Read the user's intent and run the right action — they never need to
+memorize sub-commands.
+
+| The user wants to… | Run |
+|---|---|
+| visualize / open the graph | `python3 "$INSIGHT" graph render --format html` → tell them the path, offer to `open` it |
+| a quick inline diagram | `python3 "$INSIGHT" graph render --format mermaid` |
+| what connects to / contradicts X | resolve X via `search`, then `graph neighbors --id <id> [--type contradicts]` |
+| all tensions in the library | `python3 "$INSIGHT" graph contradictions` |
+| how are X and Y connected | `python3 "$INSIGHT" graph path --id <a> --to <b>` |
+| what's disconnected / orphaned | `python3 "$INSIGHT" graph orphans` |
+| clusters / groups | `python3 "$INSIGHT" graph clusters` |
+| strengthen / connect the graph | `python3 "$INSIGHT" graph suggest` → judge each, then `link <a> <b> --type <t> --note "…"` |
+
+The graph starts sparse (edges only exist where drawn at capture/link time). `graph suggest`
+proposes unconnected pairs that share tags or wording; **judge each proposal and pick a real
+relation type** — don't link things just because they share a tag. `render --format html` writes a
+self-contained interactive force-directed viewer (nodes by domain, edges by relation, click to
+read) to `index/graph.html`.
 
 ## Quality bar
 Atomic (one claim per insight) · provenance on every insight · specific claims, no filler ·
