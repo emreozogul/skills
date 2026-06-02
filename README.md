@@ -40,6 +40,18 @@ Pure markdown + Workflow orchestration — no binary. Research finds *what's tru
 
 ---
 
+### [`distill/`](./distill) — Turn any long input into structured, reusable knowledge
+
+Condenses an article, paper, PDF, URL, transcript, or research output into atomic claims (tagged fact / opinion / prediction + strength), a core thesis, action items, and the weak-points / what's-missing layer most summaries skip. Saves a distillation file and optionally captures strong claims to `insight-vault`.
+
+Pure markdown — single sources inline, multi-source via Workflow fan-out. The third in the family: research gathers, decide chooses, **distill makes sense of what you consume.**
+
+**Use when:** you've got a wall of input — "distill this", "tldr", "what are the key claims", "break this down" — or want to compress a research report into insights.
+
+[Read more →](./distill/SKILL.md)
+
+---
+
 ### [`insight-vault/`](./insight-vault) — Personal knowledge library (capture / retrieve / evaluate)
 
 Turns text, files, URLs, or research output into atomic, provenance-backed insight files, keeps a rebuildable SQLite FTS5 index over them, and evaluates positions against your own library (supports / contradicts / qualifies + knowledge gaps). Stdlib-only Python engine bundled with the skill — no third-party packages.
