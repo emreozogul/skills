@@ -1,7 +1,8 @@
 {
   "_meta": {
     "name": "Free CC0 game-asset vault",
-    "note": "Curated, license-verified free assets. Kenney = direct zip download into the vault. Poly Haven = live thumbnail + open page (multi-file material/model sets). Link = browse portal. All entries verified reachable 2026-06.",
+    "note": "Curated, license-verified free assets. Kenney/ambientCG/HDRIs = direct download into the vault. Poly Haven models + Synty/Quaternius = open page. All entries verified reachable 2026-06.",
+    "lowpoly_lane": "For a COHERENT low-poly 3D game, search or filter the tag 'lowpoly': Kenney 3D kits (CC0) + Quaternius (CC0) + Synty POLYGON ($) are the matching set. Don't mix in realistic Poly Haven / ambientCG props — the styles clash. Pick ONE lane and build in it.",
     "license_key": { "CC0": "public domain, commercial OK, no attribution" }
   },
   "assets": [
@@ -141,6 +142,21 @@
     { "id": "kenney-hexagon-kit", "name": "Hexagon Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","hexagon","strategy","tiles"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "hexagon-kit" },
     { "id": "kenney-prototype-textures", "name": "Prototype Textures", "type": "3d", "category": "material", "tags": ["3d","greybox","prototype","blockout","grid"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "prototype-textures" },
     { "id": "kenney-space-kit", "name": "Space Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","space","scifi"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "space-kit" },
-    { "id": "kenney-boardgame-pack", "name": "Boardgame Pack", "type": "2d", "category": "sprites", "tags": ["boardgame","cards","dice","2d"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "boardgame-pack" }
+    { "id": "kenney-boardgame-pack", "name": "Boardgame Pack", "type": "2d", "category": "sprites", "tags": ["boardgame","cards","dice","2d"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "boardgame-pack" },
+
+    { "id": "kenney-watercraft-kit", "name": "Watercraft Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","boats","ships","pirate","sea","water"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "watercraft-kit" },
+    { "id": "kenney-modular-buildings", "name": "Modular Buildings", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","buildings","town","modular"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "modular-buildings" },
+    { "id": "kenney-mini-arena", "name": "Mini Arena", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","arena","combat","level"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "mini-arena" },
+    { "id": "kenney-holiday-kit", "name": "Holiday Kit", "type": "3d", "category": "props", "tags": ["3d","lowpoly","holiday","props","decor"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "holiday-kit" },
+    { "id": "kenney-city-kit-suburban", "name": "City Kit (Suburban)", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","city","suburban","buildings"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "city-kit-suburban" },
+    { "id": "kenney-retro-urban-kit", "name": "Retro Urban Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","urban","retro","buildings"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "retro-urban-kit" },
+
+    { "id": "quaternius-cute-monsters", "name": "Cute Monsters", "type": "3d", "category": "characters", "tags": ["3d","lowpoly","monsters","cute","rigged","animated","enemies"], "author": "Quaternius", "license": "CC0", "source": "link", "page": "https://quaternius.com/packs/cutemonsters.html" },
+    { "id": "quaternius-survival", "name": "Survival Kit", "type": "3d", "category": "props", "tags": ["3d","lowpoly","survival","props","items"], "author": "Quaternius", "license": "CC0", "source": "link", "page": "https://quaternius.com/packs/survival.html" },
+    { "id": "quaternius-modular-women", "name": "Ultimate Modular Women", "type": "3d", "category": "characters", "tags": ["3d","lowpoly","characters","modular","rigged","animated"], "author": "Quaternius", "license": "CC0", "source": "link", "page": "https://quaternius.com/packs/ultimatemodularwomen.html" },
+
+    { "id": "synty-polygon-pirate", "name": "POLYGON Pirate Pack", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","pirate","ship","sea","environment","cohesive"], "author": "Synty", "license": "$49.99", "source": "link", "page": "https://syntystore.com/products/polygon-pirate-pack" },
+    { "id": "synty-polygon-adventure", "name": "POLYGON Adventure Pack", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","adventure","rpg","cohesive"], "author": "Synty", "license": "$29.99", "source": "link", "page": "https://syntystore.com/products/polygon-adventure-pack" },
+    { "id": "synty-polygon-collection", "name": "Synty POLYGON (browse all)", "type": "3d", "category": "portal", "tags": ["3d","lowpoly","cohesive","portal","aaa-indie"], "author": "Synty", "license": "$ sub", "source": "link", "page": "https://syntystore.com/collections/polygon" }
   ]
 }

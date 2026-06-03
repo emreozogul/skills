@@ -25,7 +25,7 @@ No dependencies. It's a knowledge skill — it tells Claude *where* to get asset
 | `SKILL.md` | The 5-step pipeline (library-first → hand hero → AI-where-matured → cleanup → import), the honest **2D-vs-3D AI asymmetry** table, and the **free-first / `$`-flagged / ask-before-paid** discipline. |
 | `references/sources-2d.md` | 2D sources: free libs (Kenney `CC0`, itch.io, OpenGameArt), hand-draw (Aseprite + `pixel-pipeline`), and AI pixel **paid specialists only** (PixelLab, RetroDiffusion, Sprite AI) with the free-local-SDXL trap spelled out. Import via Aseprite Wizard. |
 | `references/sources-3d.md` | 3D sources: CC0 libs (Kenney, Quaternius, Poly Haven), paid (Synty POLYGON `$`, Fab/Megascans), AI image→3D (Tripo, Meshy, TRELLIS, Hunyuan3D) with the Blender-cleanup caveat, then the Blender → `.glb` → Godot import path. |
-| `vault/vault.py` + `vault/catalog.json` | **The bundled asset vault** — a stdlib browser UI to filter, preview, select, and download CC0 packs straight into your project. 126 license-verified entries (Kenney ×61, ambientCG ×25, Poly Haven models + 9 HDRIs, music portals), weighted for a top-down pixel game. |
+| `vault/vault.py` + `vault/catalog.json` | **The bundled asset vault** — a stdlib browser UI to filter, preview, select, and download CC0 packs straight into your project. 138 license-verified entries (Kenney ×67, ambientCG ×25, Poly Haven + 9 HDRIs, Quaternius/Synty low-poly, music portals), weighted for a top-down pixel game. |
 
 ## The asset vault (bundled tool)
 
@@ -38,7 +38,7 @@ python3 vault/vault.py list --type 2d                     # CLI listing
 python3 vault/vault.py get kenney-tiny-dungeon            # CLI fetch one pack
 ```
 
-- **Kenney** (61 packs) download as a self-contained zip and unzip into `asset-vault/<type>/<id>/` — the zip URL is resolved live from the asset page, so links never go stale. (Verified: `kenney-pirate-pack` → 425 files — ships, ship parts, tiles.)
+- **Kenney** (67 packs) download as a self-contained zip and unzip into `asset-vault/<type>/<id>/` — the zip URL is resolved live from the asset page, so links never go stale. (Verified: `kenney-pirate-pack` → 425 files — ships, ship parts, tiles.)
 - **ambientCG** (25 CC0 PBR materials) download as a 1K-JPG zip — and ship a Godot `.tres`, so the texture drops straight in. (Verified: `acg-Wood050` → Color/Normal/Roughness/Displacement + `.tres`.)
 - **Poly Haven HDRIs** (9) download as a single `.hdr` for 3D lighting (verified: `qwantani_noon_2k.hdr`); **Poly Haven models** show live thumbnails + open the page for multi-file sets.
 - **Audio:** Kenney SFX/voice packs download in place; **music portals** (FreePD `CC0`, Sonniss, Incompetech) link out for soundtracks.
