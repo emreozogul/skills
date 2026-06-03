@@ -144,6 +144,18 @@ Ships as **both** a Skill Claude invokes on sprite / pixel art / Aseprite / anim
 
 ---
 
+### [`godot/`](./godot) — Build Godot 4 games in GDScript, with game feel front-loaded
+
+Player controllers, enemies, combat, scenes, autoloads, and Resource-driven data for **Godot 4** — plus a **game-feel toolkit** (hit-pause, screen shake, knockback, hurt flash, damage popups, squash/stretch) because in an action game the systems are cheap and the *feel* is everything. Engine-specific: speaks Godot 4 idioms and drives the godot MCP (`create_scene`, `add_node`, `run_project`) to build scenes and verify them by actually running the project.
+
+Pure markdown + the godot MCP — no binary. Carries a one rigid rule: **feel can't be asserted, only observed** — after any feel change, run the project and watch it. (For Unity/Unreal, use a generic game-dev skill instead.)
+
+**Use when:** working in a Godot project (`project.godot`), or the user mentions Godot/GDScript/`.gd`/`.tscn`/CharacterBody2D, or wants movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, or "make it feel good."
+
+[Read more →](./godot/SKILL.md)
+
+---
+
 ## Install
 
 ### Per-skill install
@@ -163,6 +175,7 @@ cp -r skills/skill-hygiene ~/.claude/skills/
 cp -r skills/dogfood-router ~/.claude/skills/
 chmod +x ~/.claude/skills/dogfood-router/dogfood-router.sh
 cp -r skills/pixel-pipeline ~/.claude/skills/
+cp -r skills/godot ~/.claude/skills/
 ```
 
 After copying `dogfood-router`, wire it into your `~/.claude/settings.json` to activate (see [dogfood-router/README.md](./dogfood-router/README.md) for the JSON snippet).
@@ -205,6 +218,7 @@ skh                               # skill hygiene audit
 | `skill-hygiene` | Rust 1.70+ (for the `skh` CLI). |
 | `dogfood-router` | Bash, `python3`, and `find-skills` in PATH. No Rust needed. |
 | `pixel-pipeline` | Rust 1.70+ (for the `pix` CLI). Aseprite + `aseprite-mcp-pro` MCP recommended for full workflow. |
+| `godot` | Godot 4.x. The `godot` MCP connected (for scene construction + `run_project` verification); degrades to writing `.gd`/`.tscn` files directly without it. No Rust needed. |
 
 ## Design principles
 
