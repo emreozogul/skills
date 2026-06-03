@@ -144,13 +144,15 @@ Ships as **both** a Skill Claude invokes on sprite / pixel art / Aseprite / anim
 
 ---
 
-### [`godot/`](./godot) — Build Godot 4 games in GDScript, with game feel front-loaded
+### [`godot/`](./godot) — Build Godot 4 games *fast*, with game feel front-loaded
 
 Player controllers, enemies, combat, scenes, autoloads, and Resource-driven data for **Godot 4** — plus a **game-feel toolkit** (hit-pause, screen shake, knockback, hurt flash, damage popups, squash/stretch) because in an action game the systems are cheap and the *feel* is everything. Engine-specific: speaks Godot 4 idioms and drives the godot MCP (`create_scene`, `add_node`, `run_project`) to build scenes and verify them by actually running the project.
 
-Pure markdown + the godot MCP — no binary. Carries a one rigid rule: **feel can't be asserted, only observed** — after any feel change, run the project and watch it. (For Unity/Unreal, use a generic game-dev skill instead.)
+Two **ship-faster** accelerators: (1) a current map of best-of-breed plugins to **wrap instead of reinvent** (Phantom Camera, LimboAI/Beehave, Dialogue Manager, Aseprite Wizard, GdUnit4) with "start with 5, add only when scope demands" discipline; (2) a **playtest/verify harness** (live Remote-inspector tuning, debug HUD, hitbox visualizer, headless self-reporting verify) that collapses the tune→feel loop to seconds.
 
-**Use when:** working in a Godot project (`project.godot`), or the user mentions Godot/GDScript/`.gd`/`.tscn`/CharacterBody2D, or wants movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, or "make it feel good."
+Pure markdown + the godot MCP — no binary. Carries one rigid rule: **feel can't be asserted, only observed** — after any feel change, run the project and watch it. (For Unity/Unreal, use a generic game-dev skill instead.)
+
+**Use when:** working in a Godot project (`project.godot`), the user mentions Godot/GDScript/`.gd`/`.tscn`/CharacterBody2D, wants movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, "make it feel good," **or asks how to build games faster / which Godot plugin to use / how to speed up tuning.**
 
 [Read more →](./godot/SKILL.md)
 

@@ -6,6 +6,11 @@ Engine-specific on purpose. This is *not* a generic "game-developer" skill — i
 
 Built around one honest constraint: **systems are cheap, feel is everything.** A correct hitbox that does damage is worthless if the hit doesn't *land* — no pause, no shake, no knockback. So the toolkit front-loads the juice and the SKILL.md enforces a verification discipline: after any feel change, you **run the project and watch it**, you don't assert it feels good.
 
+And to actually **ship faster**, it carries two accelerators beyond the combat code:
+
+1. **Wrap proven plugins, don't reinvent** — a current (2026) map of the best-of-breed Godot addons per problem (Phantom Camera, LimboAI/Beehave, Dialogue Manager, Aseprite Wizard, GdUnit4, Save Made Easy) with the discipline that matters most: *start with ~5, add the rest only when scope demands.*
+2. **Collapse the iterate→feel loop** — a playtest/verify harness (live Remote-inspector tuning, a drop-in debug HUD, a hitbox visualizer, and a headless self-reporting verify recipe) so tuning a number costs seconds, not a restart.
+
 ## Install
 
 ```bash
@@ -21,7 +26,9 @@ Requires the **godot MCP** connected (provides `create_scene`, `add_node`, `run_
 
 | File | What it carries |
 |---|---|
-| `SKILL.md` | When to fire, the Godot-4 mental model, the recommended Phase-1 build sequence (game-feel autoload → player → hitbox/hurtbox → first weapon → enemy → playtest), and the non-negotiable **run-to-verify** discipline. |
+| `SKILL.md` | When to fire, the Godot-4 mental model, the two **build-faster** accelerators, the recommended Phase-1 build sequence (game-feel autoload → player → hitbox/hurtbox → first weapon → enemy → playtest), and the non-negotiable **run-to-verify** discipline. |
+| `references/ecosystem.md` | **Which plugin to wrap** per problem (camera, enemy AI, dialogue, save/load, tests, Aseprite import), why it wins, how to install — and the "start with 5, add only when scope demands" discipline. Plus the gotchas (LimboAI⇄Beehave conflict, save migrations, C++ GDExtension version-matching). |
+| `references/playtest-harness.md` | **Tune feel in seconds**: the live Remote-inspector tuning loop, a drop-in `DebugHUD` autoload, a runtime hitbox visualizer, and the headless `run_project → get_debug_output → stop` recipe with self-reporting test scenes (assert on prints + `errors:[]`, not "didn't crash"). |
 | `references/game-feel.md` | The juice toolkit as drop-in GDScript: a `GameFeel` autoload (hit-pause via `Engine.time_scale` + real-time timer, trauma-based screen shake with `FastNoiseLite`), plus knockback, hurt flash (modulate + shader), squash/stretch, damage popups, and the "every hit" recipe that wires them together. |
 | `references/combat-components.md` | Composition-over-inheritance combat: a collision-layer scheme and reusable `Health` / `Hurtbox` / `Hitbox` components you drop onto any entity. Add an enemy by giving it a Health + Hurtbox — it just works. |
 | `references/gdscript-patterns.md` | Godot-4 idioms: `enum` + `match` state machines, input-map verbs, pixel-perfect setup, signals/Events autoload, `WeaponData` Resources, and a list of Godot-3→4 gotchas that bite (`move_and_slide()` takes no args, `sig.emit()`, `instantiate()`, `await`, `queue_redraw()`). |

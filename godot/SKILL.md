@@ -1,6 +1,6 @@
 ---
 name: godot
-description: Build Godot 4 games in GDScript — player controllers, enemies, combat, game feel/juice, scenes, autoloads, Resource-driven data, and shaders. Use when the user is working in a Godot project (has project.godot), mentions Godot, GDScript, .gd/.tscn files, CharacterBody2D, signals, autoloads, or wants to add movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, or game feel. Drives the godot MCP (create_scene, add_node, run_project) and writes .gd/.tscn files directly. Engine-specific (NOT Unity/Unreal — use game-developer for those). Carries a game-feel toolkit (hit-pause, screen shake, knockback, hurt flash, damage popup, squash/stretch) ready to drop in.
+description: Build Godot 4 games FAST in GDScript — player controllers, enemies, combat, game feel/juice, scenes, autoloads, Resource-driven data, shaders. Use when the user is working in a Godot project (has project.godot), mentions Godot, GDScript, .gd/.tscn files, CharacterBody2D, signals, autoloads, or wants to add movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, game feel, OR asks how to build games faster / which Godot plugin to use / how to speed up tuning. Drives the godot MCP (create_scene, add_node, run_project) and writes .gd/.tscn directly. Engine-specific (NOT Unity/Unreal — use game-developer for those). Two accelerators: (1) maps best-of-breed plugins to WRAP instead of reinvent (Phantom Camera, LimboAI/Beehave, Dialogue Manager, Aseprite Wizard, GdUnit4); (2) a playtest/verify harness to tune feel in seconds. Plus a drop-in game-feel toolkit (hit-pause, screen shake, knockback, hurt flash, damage popup, squash/stretch).
 ---
 
 # godot
@@ -25,6 +25,22 @@ You have two ways to build, use both:
 2. **Write files directly** — `.gd` (GDScript) and `.tscn`/`.tres` are plain text. For scripts especially, Write the file; it's faster and more precise than node-by-node MCP calls. `.tscn` can be hand-written for simple scenes or built via `add_node`.
 
 Always **run the project** (`run_project`) after a change that affects feel or behavior — reading the output / watching it is the verification. Don't claim combat "feels good" without running it.
+
+## Build faster — the two accelerators
+
+Shipping a Godot game fast is mostly two moves. Reach for these *before* hand-writing systems:
+
+**1. Wrap proven plugins; don't reinvent.** Dialogue, enemy AI, camera juice, save/load, Aseprite import — mature addons already nail these. Writing your own is the slow path and a worse result. When the user asks for one of these, **name the plugin and scaffold around it.** The map (problem → the pick → why → install) is in **`references/ecosystem.md`**:
+
+| Need | Wrap | | Need | Wrap |
+|---|---|---|---|---|
+| Camera feel | Phantom Camera | | Dialogue | Dialogue Manager |
+| Enemy AI | LimboAI *or* Beehave | | Aseprite → game | Aseprite Wizard |
+| Tests | GdUnit4 / GUT | | Save/load | Resources + Save Made Easy |
+
+**Scope discipline is the real speed-up:** start a project with ~5 plugins (art-in, camera, one-AI, one-dialogue, tests); add the rest *only when scope demands*. Installing 16 addons before the loop is fun is the death-loop in plugin form.
+
+**2. Collapse the iterate→feel loop.** Feel is tuned, not designed — so make tuning cost seconds. Expose every feel number as `@export_range`, run from the editor, and edit values **live via the Remote scene-tree inspector** while the game runs. Drop-in debug HUD, hitbox visualizer, and the headless self-reporting verify recipe are in **`references/playtest-harness.md`**.
 
 ## Match the project's conventions
 
@@ -87,8 +103,10 @@ Make verification a real assertion, not "it didn't crash": build a tiny `_test` 
 
 ## See also
 
+- `references/ecosystem.md` — **which Godot plugin to wrap** per problem (camera, AI, dialogue, save, tests, Aseprite) + the minimal-set discipline
+- `references/playtest-harness.md` — **tune feel in seconds**: live Remote-inspector tuning, debug HUD, hitbox visualizer, headless self-reporting verify recipe
 - `references/game-feel.md` — full GDScript for hit-pause, shake, knockback, hurt flash, damage popup, squash/stretch
 - `references/combat-components.md` — Hitbox/Hurtbox/Health component scripts + how to wire them
 - `references/gdscript-patterns.md` — state machine, signals, Resources, common Godot-4 gotchas
-- `pixel-pipeline` — produces the sprites this consumes
+- `pixel-pipeline` — produces the sprites this consumes (import via Aseprite Wizard)
 - The project's own `docs/systems/combat.md` + `docs/tech/godot-architecture.md` — match these, they're the source of truth
