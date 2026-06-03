@@ -46,6 +46,25 @@ The user's stance (honor it): **prefer free/CC0, especially for environment & pr
 
 Never silently route the user to a paid tool. Say "free X covers this; the paid option is Y at $Z — want that instead?"
 
+## Bundled tool — the asset vault UI
+
+A working local browser to **discover, select, and collect** free CC0 assets into the project — the practical companion to the maps above. Stdlib Python, no installs.
+
+```bash
+python3 vault/vault.py serve          # opens a filterable browser UI at localhost:8777
+python3 vault/vault.py serve --out ~/game/assets/vendor   # download straight into the project
+python3 vault/vault.py list --type 2d # CLI listing
+python3 vault/vault.py get kenney-tiny-dungeon            # CLI fetch one pack
+```
+
+- Backed by `vault/catalog.json` — license-verified CC0 packs (Kenney, Poly Haven, Quaternius), weighted for a top-down pixel game.
+- **Kenney** packs download as a self-contained zip and unzip straight into `asset-vault/<type>/<id>/` (the zip URL is resolved live from the page, so it never goes stale).
+- **Poly Haven** shows live thumbnails + opens the page (multi-file material/model sets — pick your format there).
+- Filter by type (2D/3D/audio/UI), search by tag, `CC0` badges, "Add to vault" / "Open page" per card.
+- To add an asset: append an entry to `catalog.json` (`source: "kenney"` with a verified slug, or `"polyhaven"`/`"link"`). Verify a Kenney slug first: `curl -sI https://kenney.nl/assets/<slug>`.
+
+This is *acquisition with a UI*; once assets are in, `pixel-pipeline` processes 2D and `godot` imports.
+
 ## What this composes with
 
 - **`pixel-pipeline`** — once you have or hand-draw 2D art, it does palette/dither/scale/pack (the `pix` CLI + Aseprite). This skill is *acquisition*; that one is *processing*.
@@ -55,3 +74,4 @@ Never silently route the user to a paid tool. Say "free X covers this; the paid 
 
 - `references/sources-2d.md` — 2D: free libs (Kenney, itch CC0, OpenGameArt), hand (Aseprite), AI pixel specialists ($), import via Aseprite Wizard
 - `references/sources-3d.md` — 3D: CC0 libs (Kenney, Quaternius, Poly Haven), paid (Synty POLYGON $, Fab/Megascans), AI image→3D (Tripo/Meshy/TRELLIS/Hunyuan3D), Blender cleanup + glTF→Godot
+- `vault/vault.py` + `vault/catalog.json` — the bundled **asset vault**: a stdlib browser UI to filter, preview, select, and download CC0 packs into the project

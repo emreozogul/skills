@@ -25,6 +25,25 @@ No dependencies. It's a knowledge skill — it tells Claude *where* to get asset
 | `SKILL.md` | The 5-step pipeline (library-first → hand hero → AI-where-matured → cleanup → import), the honest **2D-vs-3D AI asymmetry** table, and the **free-first / `$`-flagged / ask-before-paid** discipline. |
 | `references/sources-2d.md` | 2D sources: free libs (Kenney `CC0`, itch.io, OpenGameArt), hand-draw (Aseprite + `pixel-pipeline`), and AI pixel **paid specialists only** (PixelLab, RetroDiffusion, Sprite AI) with the free-local-SDXL trap spelled out. Import via Aseprite Wizard. |
 | `references/sources-3d.md` | 3D sources: CC0 libs (Kenney, Quaternius, Poly Haven), paid (Synty POLYGON `$`, Fab/Megascans), AI image→3D (Tripo, Meshy, TRELLIS, Hunyuan3D) with the Blender-cleanup caveat, then the Blender → `.glb` → Godot import path. |
+| `vault/vault.py` + `vault/catalog.json` | **The bundled asset vault** — a stdlib browser UI to filter, preview, select, and download CC0 packs straight into your project. 46 license-verified entries (Kenney, Poly Haven, Quaternius), weighted for a top-down pixel game. |
+
+## The asset vault (bundled tool)
+
+A working local browser for free CC0 assets — discover, select, collect. Pure stdlib Python, no installs.
+
+```bash
+python3 vault/vault.py serve                              # filterable UI at localhost:8777
+python3 vault/vault.py serve --out ~/game/assets/vendor   # download into your project
+python3 vault/vault.py list --type 2d                     # CLI listing
+python3 vault/vault.py get kenney-tiny-dungeon            # CLI fetch one pack
+```
+
+- **Kenney** packs download as a self-contained zip and unzip into `asset-vault/<type>/<id>/` — the zip URL is resolved live from the asset page, so links never go stale. (Verified: fetching `kenney-tiny-dungeon` unzips 142 real files — tiles, a Tiled map, license.)
+- **Poly Haven** shows live thumbnails (its public API) and opens the page for multi-file material/model sets.
+- Filter by type (2D / 3D / audio / UI), search by tag, `CC0` badges, per-card **Open page** / **Add to vault**.
+- Extend it by appending to `catalog.json`. Verify a Kenney slug first: `curl -sI https://kenney.nl/assets/<slug>`.
+
+Downloaded assets are gitignored — the repo ships the *tool + catalog*, not binaries.
 
 ## The honest AI reality (the part most guides skip)
 

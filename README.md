@@ -162,7 +162,7 @@ Pure markdown + the godot MCP — no binary. Carries one rigid rule: **feel can'
 
 Where to get game art without the two traps: hand-making everything (too slow) or AI-generating everything (inconsistent — and for 2D pixel-style-matching on free tools, a dead end). Maps the current (2026) best-of-breed: CC0/free libraries (Kenney, Quaternius, Poly Haven, itch.io, OpenGameArt), paid packs (Synty POLYGON, Fab) flagged with `$`, and where AI genuinely helps — **image→3D (Tripo/Meshy/TRELLIS/Hunyuan3D) works now; free-local AI pixel art still doesn't.** Then the cleanup→import path into Godot (Aseprite Wizard for 2D, Blender + glTF for 3D).
 
-Pure knowledge skill — no binary. **Free-first**: flags paid options with price and asks before assuming spend. Composes with `pixel-pipeline` (2D processing) and `godot` (engine import). Encodes a real lesson — *identify the source tool before approximating a style* — so the AI-pixel-art dead end isn't relearned.
+Ships a **bundled asset vault** too: a stdlib-Python browser UI (`vault/vault.py`) to filter, preview, select, and download 46 license-verified CC0 packs (Kenney, Poly Haven, Quaternius) straight into your project — Kenney unzips in place, Poly Haven pulls live thumbnails. **Free-first**: flags paid options with price and asks before assuming spend. Composes with `pixel-pipeline` (2D processing) and `godot` (engine import). Encodes a real lesson — *identify the source tool before approximating a style* — so the AI-pixel-art dead end isn't relearned.
 
 **Use when:** the user needs assets (sprites, textures, 3D models, environments, props, characters, tilesets, UI), asks "where do I get art", weighs buy-vs-make-vs-generate, or is about to hand-make / AI-generate something a library already covers.
 
@@ -234,7 +234,7 @@ skh                               # skill hygiene audit
 | `dogfood-router` | Bash, `python3`, and `find-skills` in PATH. No Rust needed. |
 | `pixel-pipeline` | Rust 1.70+ (for the `pix` CLI). Aseprite + `aseprite-mcp-pro` MCP recommended for full workflow. |
 | `godot` | Godot 4.x. The `godot` MCP connected (for scene construction + `run_project` verification); degrades to writing `.gd`/`.tscn` files directly without it. No Rust needed. |
-| `asset-pipeline` | Nothing — pure knowledge skill. Composes with `pixel-pipeline` (2D processing) and `godot` (import). Blender recommended for 3D cleanup; paid tools (Synty, PixelLab, Meshy) optional and flagged. |
+| `asset-pipeline` | `python3` for the bundled asset-vault UI (stdlib only — no pip installs). Composes with `pixel-pipeline` (2D processing) and `godot` (import). Blender recommended for 3D cleanup; paid tools (Synty, PixelLab, Meshy) optional and flagged. |
 
 ## Design principles
 

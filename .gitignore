@@ -20,3 +20,7 @@ Thumbs.db
 
 # Claude Code transient
 .claude/
+
+# Asset Vault downloads (binaries, not source)
+asset-vault/
+**/asset-vault/
