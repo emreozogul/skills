@@ -109,6 +109,38 @@
 
     { "id": "freepd-music", "name": "FreePD — CC0 music (browse)", "type": "audio", "category": "portal", "tags": ["portal","music","cc0","soundtrack"], "author": "FreePD", "license": "CC0", "source": "link", "page": "https://freepd.com/" },
     { "id": "sonniss-sfx", "name": "Sonniss GDC — free SFX (browse)", "type": "audio", "category": "portal", "tags": ["portal","sfx","royalty-free","library"], "author": "Sonniss", "license": "free*", "source": "link", "page": "https://sonniss.com/gameaudiogdc" },
-    { "id": "incompetech-music", "name": "Incompetech — royalty-free music (browse)", "type": "audio", "category": "portal", "tags": ["portal","music","cc-by"], "author": "Incompetech", "license": "free*", "source": "link", "page": "https://incompetech.com/music/royalty-free/" }
+    { "id": "incompetech-music", "name": "Incompetech — royalty-free music (browse)", "type": "audio", "category": "portal", "tags": ["portal","music","cc-by"], "author": "Incompetech", "license": "free*", "source": "link", "page": "https://incompetech.com/music/royalty-free/" },
+
+    { "id": "ph-cannon_01", "name": "Cannon 01", "type": "3d", "category": "props", "tags": ["3d","pbr","cannon","pirate","weapon"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "cannon_01" },
+    { "id": "ph-kite_shield", "name": "Kite Shield", "type": "3d", "category": "props", "tags": ["3d","pbr","shield","medieval","weapon"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "kite_shield" },
+    { "id": "ph-carved_wooden_plate", "name": "Carved Wooden Plate", "type": "3d", "category": "props", "tags": ["3d","pbr","tableware","food","tavern"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "carved_wooden_plate" },
+    { "id": "ph-brass_candleholders", "name": "Brass Candleholders", "type": "3d", "category": "props", "tags": ["3d","pbr","candle","light","decor"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "brass_candleholders" },
+    { "id": "ph-brass_pot_01", "name": "Brass Pot 01", "type": "3d", "category": "props", "tags": ["3d","pbr","pot","cooking"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "brass_pot_01" },
+    { "id": "ph-jug_01", "name": "Jug 01", "type": "3d", "category": "props", "tags": ["3d","pbr","jug","tavern","pottery"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "jug_01" },
+    { "id": "ph-metal_jug", "name": "Metal Jug", "type": "3d", "category": "props", "tags": ["3d","pbr","jug","tavern"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "metal_jug" },
+    { "id": "ph-ladder_sectioned_01", "name": "Ladder 01", "type": "3d", "category": "props", "tags": ["3d","pbr","ladder"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "ladder_sectioned_01" },
+    { "id": "ph-potted_plant_01", "name": "Potted Plant 01", "type": "3d", "category": "props", "tags": ["3d","pbr","plant","decor","nature"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "potted_plant_01" },
+    { "id": "ph-metal_tool_chest", "name": "Metal Tool Chest", "type": "3d", "category": "props", "tags": ["3d","pbr","chest","storage"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "metal_tool_chest" },
+
+    { "id": "ph-hdri-blue_lagoon_night", "name": "Blue Lagoon Night (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","night","sea","lagoon"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "blue_lagoon_night" },
+    { "id": "ph-hdri-autumn_forest_01", "name": "Autumn Forest (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","forest","outdoor"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "autumn_forest_01" },
+    { "id": "ph-hdri-art_studio", "name": "Art Studio (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","indoor","studio","neutral"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "art_studio" },
+    { "id": "ph-hdri-blaubeuren_night", "name": "Blaubeuren Night (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","night","town"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "blaubeuren_night" },
+
+    { "id": "acg-RoofingTiles013A", "name": "Roofing Tiles 013A (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","roof","tiles","building"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "RoofingTiles013A" },
+    { "id": "acg-Moss002", "name": "Moss 002 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","moss","nature","ground"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Moss002" },
+    { "id": "acg-Bark014", "name": "Bark 014 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","bark","tree","wood"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Bark014" },
+    { "id": "acg-Metal063", "name": "Metal 063 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","metal","plate"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Metal063" },
+    { "id": "acg-Marble012", "name": "Marble 012 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","marble","stone","floor"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Marble012" },
+    { "id": "acg-Concrete048", "name": "Concrete 048 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","concrete","wall"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Concrete048" },
+    { "id": "acg-Ground068", "name": "Ground 068 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","ground","dirt","path"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Ground068" },
+    { "id": "acg-Snow015", "name": "Snow 015 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","snow","winter","ground"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Snow015" },
+
+    { "id": "kenney-graveyard-kit", "name": "Graveyard Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","graveyard","spooky","halloween","cursed"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "graveyard-kit" },
+    { "id": "kenney-fantasy-town-kit", "name": "Fantasy Town Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","fantasy","town","medieval"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "fantasy-town-kit" },
+    { "id": "kenney-hexagon-kit", "name": "Hexagon Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","hexagon","strategy","tiles"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "hexagon-kit" },
+    { "id": "kenney-prototype-textures", "name": "Prototype Textures", "type": "3d", "category": "material", "tags": ["3d","greybox","prototype","blockout","grid"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "prototype-textures" },
+    { "id": "kenney-space-kit", "name": "Space Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","space","scifi"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "space-kit" },
+    { "id": "kenney-boardgame-pack", "name": "Boardgame Pack", "type": "2d", "category": "sprites", "tags": ["boardgame","cards","dice","2d"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "boardgame-pack" }
   ]
 }
