@@ -25,6 +25,18 @@ _resolved = {}  # id -> {"thumb":?, "download":?, "page":?}
 TYPE_COLORS = {"2d": "#4ea1ff", "3d": "#b97bff", "audio": "#ffb84e", "ui": "#46d6a0"}
 
 
+# ----------------------------------------------------------- poly pizza key --
+def pp_key():
+    """Poly Pizza API key from env or a gitignored .pp_key file. Never committed."""
+    k = os.environ.get("POLY_PIZZA_KEY")
+    if k:
+        return k.strip()
+    p = os.path.join(HERE, ".pp_key")
+    if os.path.isfile(p):
+        return open(p, encoding="utf-8").read().strip()
+    return None
+
+
 # ---------------------------------------------------------------- catalog ----
 def load_assets():
     with open(CATALOG_PATH, encoding="utf-8") as f:
@@ -173,15 +185,22 @@ button.done{background:#10331f;color:#52e08a}
   <span style="width:1px;height:20px;background:#2a3140;margin:0 3px;display:inline-block"></span>
   <span class=chip id=lpchip onclick="toggleLP()">◆ Low-poly only</span>
  </div>
+ <div class=bar id=ppbar style="display:none;margin-top:8px">
+  <input id=ppq placeholder="🍕 Poly Pizza — live search 1000s of low-poly models, then ⬇ to your vault (Enter)" onkeydown="if(event.key==='Enter')ppSearch()">
+  <span class=chip onclick="ppSearch()">Search</span>
+  <span class=chip id=ppclear style="display:none" onclick="clearPP()">✕ back to vault</span>
+  <span id=ppstatus class=out style="margin:0 0 0 4px"></span>
+ </div>
  <div class=out><b id=shown>0</b>/<b id=count>0</b> assets · vault: <code id=out>…</code> · low-poly-only hides realistic 3D (toggle off to see Poly Haven/ambientCG)</div>
 </header>
 <div class=grid id=grid></div>
 <script>
-let assets=[],ft='all',q='',lpOnly=true;
+let assets=[],ft='all',q='',lpOnly=true,ppMode=false,ppItems=[];
 async function load(){const d=await(await fetch('/api/catalog')).json();
  assets=d.assets;out.textContent=d.out;count.textContent=assets.length;
  document.querySelector('.chip[data-t=all]').classList.add('on');
  if(lpOnly) lpchip.classList.add('on');
+ if(d.pp) ppbar.style.display='flex';
  render();}
 function setT(t,el){ft=t;document.querySelectorAll('.chip[data-t]').forEach(c=>c.classList.remove('on'));el.classList.add('on');render();}
 function toggleLP(){lpOnly=!lpOnly;lpchip.classList.toggle('on',lpOnly);render();}
@@ -204,6 +223,37 @@ function card(a){
   </div></div>`;}
 async function grab(id,btn){btn.disabled=true;btn.textContent='…';
  try{const d=await(await fetch('/api/get?id='+encodeURIComponent(id))).json();
+  if(d.ok){btn.textContent='✓ In vault';btn.classList.add('done');}
+  else{alert(d.reason||'failed');btn.textContent='⬇ Add';btn.disabled=false;}}
+ catch(e){alert(e);btn.textContent='⬇ Add';btn.disabled=false;}}
+
+// --- Poly Pizza live search ---
+async function ppSearch(){
+ const query=ppq.value.trim(); if(!query) return;
+ ppstatus.textContent='searching…';
+ try{const d=await(await fetch('/api/pp?q='+encodeURIComponent(query))).json();
+  if(!d.ok){ppstatus.textContent=d.reason||'failed';return;}
+  ppItems=d.results;ppMode=true;ppclear.style.display='';
+  ppstatus.textContent=d.results.length+' of '+(d.total||'?')+' for "'+query+'"';
+  renderPP();}
+ catch(e){ppstatus.textContent=''+e;}}
+function clearPP(){ppMode=false;ppclear.style.display='none';ppstatus.textContent='';render();}
+function renderPP(){
+ shown.textContent=ppItems.length;
+ grid.innerHTML=ppItems.map(ppCard).join('');}
+function ppCard(r){
+ const b=(r.license||'').startsWith('CC0')?'cc0':'free';
+ const an=r.animated?' · 🦴 rigged':'';
+ return `<div class=card>
+  <div class=thumb><img loading=lazy src="${r.thumb}" onerror="this.remove()"></div>
+  <div class=meta><div class=name>${r.name}</div>
+   <div class=sub>${r.author} · <span class="badge ${b}">${r.license}</span> · ${r.tris||'?'} tris${an}</div>
+   <div class=actions><a href="https://poly.pizza/m/${r.id}" target=_blank rel=noopener>Open ↗</a>
+    <button onclick='ppGrab(${JSON.stringify(r)},this)'>⬇ Add</button></div>
+  </div></div>`;}
+async function ppGrab(r,btn){btn.disabled=true;btn.textContent='…';
+ try{const u='/api/ppget?id='+encodeURIComponent(r.id)+'&name='+encodeURIComponent(r.name)+'&url='+encodeURIComponent(r.download);
+  const d=await(await fetch(u)).json();
   if(d.ok){btn.textContent='✓ In vault';btn.classList.add('done');}
   else{alert(d.reason||'failed');btn.textContent='⬇ Add';btn.disabled=false;}}
  catch(e){alert(e);btn.textContent='⬇ Add';btn.disabled=false;}}
@@ -237,7 +287,47 @@ class Handler(BaseHTTPRequestHandler):
                               "downloadable": a["source"] in ("kenney", "ambientcg", "polyhaven_hdri"),
                               "in_vault": in_vault(a)})
             return self._send(200, "application/json",
-                              json.dumps({"assets": items, "out": OUT}))
+                              json.dumps({"assets": items, "out": OUT, "pp": bool(pp_key())}))
+        if u.path == "/api/pp":
+            key = pp_key()
+            q = qs.get("q", [""])[0].strip()
+            if not key:
+                return self._send(200, "application/json", json.dumps(
+                    {"ok": False, "reason": "No Poly Pizza key — set POLY_PIZZA_KEY or vault/.pp_key"}))
+            if not q:
+                return self._send(200, "application/json", json.dumps({"ok": True, "results": []}))
+            try:
+                req = urllib.request.Request(
+                    "https://api.poly.pizza/v1.1/search/%s" % urllib.parse.quote(q),
+                    headers={**UA, "X-Auth-Token": key})
+                data = json.loads(urllib.request.urlopen(req, timeout=20).read())
+                out = []
+                for r in (data.get("results") or [])[:30]:
+                    out.append({"id": r["ID"], "name": r["Title"], "thumb": r["Thumbnail"],
+                                "download": r["Download"], "license": r.get("Licence", "?"),
+                                "author": (r.get("Creator") or {}).get("Username", "?"),
+                                "tris": r.get("Tri Count"), "animated": r.get("Animated")})
+                return self._send(200, "application/json",
+                                  json.dumps({"ok": True, "total": data.get("total"), "results": out}))
+            except Exception as e:
+                return self._send(200, "application/json", json.dumps({"ok": False, "reason": str(e)}))
+        if u.path == "/api/ppget":
+            url = qs.get("url", [""])[0]
+            pid = qs.get("id", [""])[0]
+            name = qs.get("name", ["model"])[0]
+            if not url.startswith("https://static.poly.pizza/"):
+                return self._send(400, "application/json", json.dumps({"ok": False, "reason": "bad host"}))
+            try:
+                blob = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120).read()
+                d = os.path.join(OUT, "3d", "pp-" + re.sub(r"[^A-Za-z0-9]", "", pid))
+                os.makedirs(d, exist_ok=True)
+                safe = (re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:40] or "model")
+                with open(os.path.join(d, safe + ".glb"), "wb") as f:
+                    f.write(blob)
+                return self._send(200, "application/json",
+                                  json.dumps({"ok": True, "info": {"path": d, "bytes": len(blob)}}))
+            except Exception as e:
+                return self._send(200, "application/json", json.dumps({"ok": False, "reason": str(e)}))
         if u.path == "/api/thumb":
             a = by_id(qs.get("id", [""])[0])
             thumb = resolve(a)["thumb"] if a else None

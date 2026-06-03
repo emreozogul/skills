@@ -24,3 +24,8 @@ Thumbs.db
 # Asset Vault downloads (binaries, not source)
 asset-vault/
 **/asset-vault/
+
+# Poly Pizza API key (never commit)
+.pp_key
+**/.pp_key
+*.pp_key

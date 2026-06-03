@@ -42,6 +42,7 @@ python3 vault/vault.py get kenney-tiny-dungeon            # CLI fetch one pack
 - **ambientCG** (25 CC0 PBR materials) download as a 1K-JPG zip — and ship a Godot `.tres`, so the texture drops straight in. (Verified: `acg-Wood050` → Color/Normal/Roughness/Displacement + `.tres`.)
 - **Poly Haven HDRIs** (9) download as a single `.hdr` for 3D lighting (verified: `qwantani_noon_2k.hdr`); **Poly Haven models** show live thumbnails + open the page for multi-file sets.
 - **Audio:** Kenney SFX/voice packs download in place; **music portals** (FreePD `CC0`, Sonniss, Incompetech) link out for soundtracks.
+- **Poly Pizza live search** (non-Kenney): with a free API key (`POLY_PIZZA_KEY` env or gitignored `vault/.pp_key`), the UI shows a live search bar over thousands of CC0/CC-BY low-poly models — results download straight into the vault as `.glb`. (Verified: "treasure chest" → a CC0 Quaternius chest `.glb`.) Without a key the bar is hidden; the catalog still works.
 - Filter by type (2D / 3D / audio / UI), search by tag, `CC0` badges, per-card **Open page** / **Add to vault**.
 - Extend it by appending to `catalog.json`. Verify a Kenney slug first: `curl -sI https://kenney.nl/assets/<slug>`.
 
