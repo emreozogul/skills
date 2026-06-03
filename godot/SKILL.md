@@ -1,6 +1,6 @@
 ---
 name: godot
-description: Build Godot 4 games FAST in GDScript — player controllers, enemies, combat, game feel/juice, scenes, autoloads, Resource-driven data, shaders, audio. Use when the user is working in a Godot project (has project.godot), mentions Godot, GDScript, .gd/.tscn files, CharacterBody2D, signals, autoloads, or wants to add movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, game feel, audio/SFX, a shader effect (flash/outline/dissolve/recolor), save/load, dialogue, OR asks how to build games faster / which Godot plugin to use / how to speed up tuning. Drives the godot MCP (create_scene, add_node, run_project) and writes .gd/.tscn directly. Engine-specific (NOT Unity/Unreal — use game-developer for those). Two accelerators: (1) maps best-of-breed plugins to WRAP instead of reinvent (Phantom Camera, LimboAI/Beehave, Dialogue Manager, Aseprite Wizard, GdUnit4); (2) a playtest/verify harness to tune feel in seconds. Plus a drop-in game-feel toolkit (hit-pause, screen shake, knockback, hurt flash, damage popup, squash/stretch).
+description: Build Godot 4 games FAST in GDScript — player controllers, enemies, combat, game feel/juice, scenes, autoloads, Resource-driven data, shaders, audio. Use when the user is working in a Godot project (has project.godot), mentions Godot, GDScript, .gd/.tscn files, CharacterBody2D or CharacterBody3D, signals, autoloads, or wants to add movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, game feel, audio/SFX, a shader effect (flash/outline/dissolve/recolor), save/load, dialogue, a 2D OR 3D (low-poly) game, .glb models, a follow camera, NavigationAgent3D enemies, OR asks how to build games faster / which Godot plugin to use / how to speed up tuning. Drives the godot MCP (create_scene, add_node, run_project) and writes .gd/.tscn directly. Engine-specific (NOT Unity/Unreal — use game-developer for those). Two accelerators: (1) maps best-of-breed plugins to WRAP instead of reinvent (Phantom Camera, LimboAI/Beehave, Dialogue Manager, Aseprite Wizard, GdUnit4); (2) a playtest/verify harness to tune feel in seconds. Plus a drop-in game-feel toolkit (hit-pause, screen shake, knockback, hurt flash, damage popup, squash/stretch).
 ---
 
 # godot
@@ -8,6 +8,8 @@ description: Build Godot 4 games FAST in GDScript — player controllers, enemie
 Build real Godot 4 games. GDScript idioms, scene construction via the godot MCP, Resource-driven data, and — the part that matters most for an action game — a **game-feel toolkit** that makes combat feel good.
 
 This is engine-specific. For Unity/Unreal use `game-developer`. This skill knows Godot 4.x: `CharacterBody2D`, `Area2D` hitboxes, signals, `@export`, autoloads, `.tres` Resources, the SceneTree, and `gl_compatibility` pixel-perfect setup.
+
+**Works in 2D and 3D.** Most of this skill is dimension-agnostic (state machines, Health/Hurtbox/Hitbox composition, the game-feel checklist, the `Events` bus). For a **low-poly 3D** game — `CharacterBody3D` movement, a follow camera, `.glb` import + `AnimationPlayer`, `Area3D` combat, 3D-adapted feel, `NavigationAgent3D` enemies — see **`references/3d.md`** (its core is verified running on Godot 4.6). Pair it with `asset-pipeline`'s `lowpoly` tag for cohesive Kenney/Quaternius/Synty packs.
 
 ## When to invoke
 
@@ -111,6 +113,7 @@ Make verification a real assertion, not "it didn't crash": build a tiny `_test` 
 - `references/systems-library.md` — **drop-in systems**: versioned save/load, scene-transition router, interaction ("press E"), enemy spawner
 - `references/audio.md` — **the missing half of every hit**: pooled `Audio` autoload, pitch-randomized SFX, positional playback, music crossfade, wired to the `Events` bus
 - `references/shaders.md` — **pixel-art shaders**: hit flash, outline, palette-swap recolor (enemy variants from one sprite), dissolve-on-death — each with its GDScript driver + the per-instance material gotcha
+- `references/3d.md` — **3D / low-poly mode**: CharacterBody3D movement, follow camera, `.glb` import + AnimationPlayer, Area3D combat, 3D-adapted game feel, NavigationAgent3D enemies, 3D gotchas
 - `references/game-feel.md` — full GDScript for hit-pause, shake, knockback, hurt flash, damage popup, squash/stretch
 - `references/combat-components.md` — Hitbox/Hurtbox/Health component scripts + how to wire them
 - `references/gdscript-patterns.md` — state machine, signals, Resources, common Godot-4 gotchas

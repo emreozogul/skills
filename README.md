@@ -150,6 +150,8 @@ Player controllers, enemies, combat, scenes, autoloads, and Resource-driven data
 
 Two **ship-faster** accelerators: (1) a current map of best-of-breed plugins to **wrap instead of reinvent** (Phantom Camera, LimboAI/Beehave, Dialogue Manager, Aseprite Wizard, GdUnit4) with "start with 5, add only when scope demands" discipline; (2) a **playtest/verify harness** (live Remote-inspector tuning, debug HUD, hitbox visualizer, headless self-reporting verify) that collapses the tune→feel loop to seconds.
 
+Covers **2D and 3D** — including a low-poly 3D mode (`CharacterBody3D`, follow camera, `.glb` import, `Area3D` combat, `NavigationAgent3D` enemies, 3D-adapted game feel), verified running on Godot 4.6 and paired with `asset-pipeline`'s low-poly packs.
+
 Pure markdown + the godot MCP — no binary. Carries one rigid rule: **feel can't be asserted, only observed** — after any feel change, run the project and watch it. (For Unity/Unreal, use a generic game-dev skill instead.)
 
 **Use when:** working in a Godot project (`project.godot`), the user mentions Godot/GDScript/`.gd`/`.tscn`/CharacterBody2D, wants movement, combat, an enemy, hit-pause/screen-shake/knockback, a scene, "make it feel good," **or asks how to build games faster / which Godot plugin to use / how to speed up tuning.**
