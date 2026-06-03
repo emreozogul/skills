@@ -57,8 +57,9 @@ python3 vault/vault.py list --type 2d # CLI listing
 python3 vault/vault.py get kenney-tiny-dungeon            # CLI fetch one pack
 ```
 
-- Backed by `vault/catalog.json` — **138** license-verified entries (Kenney ×67, ambientCG ×25, Poly Haven models + 9 HDRIs, Quaternius/Synty low-poly, music portals).
-- **Low-poly lane:** for a cohesive low-poly 3D game, search the tag `lowpoly` — Kenney 3D kits + Quaternius (`CC0`) + Synty POLYGON (`$`) are the *matching* set. Don't mix realistic Poly Haven/ambientCG props into a low-poly look; pick one lane and build in it.
+- Backed by `vault/catalog.json` — **140** license-verified entries (Kenney ×67, ambientCG ×25, Poly Haven models + 9 HDRIs, Quaternius low-poly nature, Synty, music portals).
+- **Low-poly first:** the UI defaults to a **"Low-poly only"** toggle that hides realistic 3D (Poly Haven/ambientCG) so everything reads low-poly; toggle it off to see them. For the cohesive set, the `lowpoly` tag = Kenney 3D kits + Quaternius (`CC0`) + Synty POLYGON (`$`). Don't mix realistic props into a low-poly look — pick one lane.
+- Low-poly **rocks/trees**: `kenney-nature-kit`, `quaternius-ultimate-nature`, `quaternius-stylized-nature`. **Chests**: `kenney-pirate-kit` (treasure), `kenney-mini-dungeon`. Search by tag.
 - **Kenney** (67 packs) download as a self-contained zip and unzip straight into `asset-vault/<type>/<id>/` (the zip URL is resolved live from the page, so it never goes stale).
 - **ambientCG** (25 CC0 PBR materials) download as a 1K-JPG zip — and ship a Godot `.tres` material, so they drop straight in.
 - **Poly Haven HDRIs** (9) download as a single `.hdr` (3D lighting); **Poly Haven models** show live thumbnails + open the page (multi-file sets).

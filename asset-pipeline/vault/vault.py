@@ -170,20 +170,26 @@ button.done{background:#10331f;color:#52e08a}
   <span class=chip data-t=3d onclick="setT('3d',this)">3D</span>
   <span class=chip data-t=audio onclick="setT('audio',this)">Audio</span>
   <span class=chip data-t=ui onclick="setT('ui',this)">UI</span>
+  <span style="width:1px;height:20px;background:#2a3140;margin:0 3px;display:inline-block"></span>
+  <span class=chip id=lpchip onclick="toggleLP()">◆ Low-poly only</span>
  </div>
- <div class=out><b id=shown>0</b>/<b id=count>0</b> assets · vault: <code id=out>…</code> · Kenney = download here · Poly Haven = open page</div>
+ <div class=out><b id=shown>0</b>/<b id=count>0</b> assets · vault: <code id=out>…</code> · low-poly-only hides realistic 3D (toggle off to see Poly Haven/ambientCG)</div>
 </header>
 <div class=grid id=grid></div>
 <script>
-let assets=[],ft='all',q='';
+let assets=[],ft='all',q='',lpOnly=true;
 async function load(){const d=await(await fetch('/api/catalog')).json();
  assets=d.assets;out.textContent=d.out;count.textContent=assets.length;
- document.querySelector('.chip[data-t=all]').classList.add('on');render();}
-function setT(t,el){ft=t;document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');render();}
+ document.querySelector('.chip[data-t=all]').classList.add('on');
+ if(lpOnly) lpchip.classList.add('on');
+ render();}
+function setT(t,el){ft=t;document.querySelectorAll('.chip[data-t]').forEach(c=>c.classList.remove('on'));el.classList.add('on');render();}
+function toggleLP(){lpOnly=!lpOnly;lpchip.classList.toggle('on',lpOnly);render();}
 function setQ(v){q=v.toLowerCase();render();}
 function render(){
- const items=assets.filter(a=>(ft==='all'||a.type===ft)&&
-  (q===''||(a.name+' '+a.tags.join(' ')+' '+a.author+' '+a.category).toLowerCase().includes(q)));
+ const items=assets.filter(a=>(ft==='all'||a.type===ft)
+  &&(!lpOnly||a.type!=='3d'||a.tags.includes('lowpoly'))
+  &&(q===''||(a.name+' '+a.tags.join(' ')+' '+a.author+' '+a.category).toLowerCase().includes(q)));
  shown.textContent=items.length;
  grid.innerHTML=items.map(card).join('');}
 function card(a){

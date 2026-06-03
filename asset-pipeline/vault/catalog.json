@@ -28,12 +28,12 @@
     { "id": "kenney-interface-sounds", "name": "Interface Sounds", "type": "audio", "category": "sfx", "tags": ["sfx","ui","interface"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "interface-sounds" },
     { "id": "kenney-music-jingles", "name": "Music Jingles", "type": "audio", "category": "music", "tags": ["music","jingle","stinger"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "music-jingles" },
     { "id": "kenney-sci-fi-sounds", "name": "Sci-Fi Sounds", "type": "audio", "category": "sfx", "tags": ["sfx","scifi"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "sci-fi-sounds" },
-    { "id": "kenney-nature-kit", "name": "Nature Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","nature","environment"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "nature-kit" },
+    { "id": "kenney-nature-kit", "name": "Nature Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","nature","environment","trees","rocks","plants","foliage"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "nature-kit" },
     { "id": "kenney-castle-kit", "name": "Castle Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","castle","medieval"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "castle-kit" },
-    { "id": "kenney-pirate-kit", "name": "Pirate Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","pirate","environment","ship"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "pirate-kit" },
+    { "id": "kenney-pirate-kit", "name": "Pirate Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","pirate","environment","ship","chest","treasure"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "pirate-kit" },
     { "id": "kenney-tower-defense-kit", "name": "Tower Defense Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","towerdefense"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "tower-defense-kit" },
-    { "id": "kenney-mini-dungeon", "name": "Mini Dungeon", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","dungeon"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "mini-dungeon" },
-    { "id": "kenney-survival-kit", "name": "Survival Kit", "type": "3d", "category": "props", "tags": ["3d","lowpoly","survival"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "survival-kit" },
+    { "id": "kenney-mini-dungeon", "name": "Mini Dungeon", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","dungeon","chest","barrel","crate"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "mini-dungeon" },
+    { "id": "kenney-survival-kit", "name": "Survival Kit", "type": "3d", "category": "props", "tags": ["3d","lowpoly","survival","crate","barrel","props"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "survival-kit" },
     { "id": "kenney-food-kit", "name": "Food Kit", "type": "3d", "category": "props", "tags": ["3d","lowpoly","food"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "food-kit" },
     { "id": "kenney-furniture-kit", "name": "Furniture Kit", "type": "3d", "category": "props", "tags": ["3d","lowpoly","furniture"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "furniture-kit" },
     { "id": "kenney-platformer-kit", "name": "Platformer Kit", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","platformer"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "platformer-kit" },
@@ -157,6 +157,9 @@
 
     { "id": "synty-polygon-pirate", "name": "POLYGON Pirate Pack", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","pirate","ship","sea","environment","cohesive"], "author": "Synty", "license": "$49.99", "source": "link", "page": "https://syntystore.com/products/polygon-pirate-pack" },
     { "id": "synty-polygon-adventure", "name": "POLYGON Adventure Pack", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","adventure","rpg","cohesive"], "author": "Synty", "license": "$29.99", "source": "link", "page": "https://syntystore.com/products/polygon-adventure-pack" },
-    { "id": "synty-polygon-collection", "name": "Synty POLYGON (browse all)", "type": "3d", "category": "portal", "tags": ["3d","lowpoly","cohesive","portal","aaa-indie"], "author": "Synty", "license": "$ sub", "source": "link", "page": "https://syntystore.com/collections/polygon" }
+    { "id": "synty-polygon-collection", "name": "Synty POLYGON (browse all)", "type": "3d", "category": "portal", "tags": ["3d","lowpoly","cohesive","portal","aaa-indie"], "author": "Synty", "license": "$ sub", "source": "link", "page": "https://syntystore.com/collections/polygon" },
+
+    { "id": "quaternius-ultimate-nature", "name": "Ultimate Nature", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","nature","trees","rocks","plants","foliage","environment"], "author": "Quaternius", "license": "CC0", "source": "link", "page": "https://quaternius.com/packs/ultimatenature.html" },
+    { "id": "quaternius-stylized-nature", "name": "Ultimate Stylized Nature", "type": "3d", "category": "environment", "tags": ["3d","lowpoly","nature","trees","rocks","stylized","foliage","environment"], "author": "Quaternius", "license": "CC0", "source": "link", "page": "https://quaternius.com/packs/ultimatestylizednature.html" }
   ]
 }
