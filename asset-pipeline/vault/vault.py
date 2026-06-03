@@ -59,6 +59,26 @@ def in_vault(a):
     return os.path.isdir(d) and bool(os.listdir(d))
 
 
+def append_credit(uid, name, author, lic, url, attribution=""):
+    """Record provenance in <vault>/CREDITS.md. CC0 needs no attribution but is
+    logged for record; CC-BY & similar REQUIRE the credit — so we capture it now
+    instead of scrambling at ship time. Idempotent per asset id."""
+    os.makedirs(OUT, exist_ok=True)
+    path = os.path.join(OUT, "CREDITS.md")
+    marker = "<!--%s-->" % uid
+    if os.path.isfile(path) and marker in open(path, encoding="utf-8").read():
+        return
+    new = not os.path.isfile(path)
+    with open(path, "a", encoding="utf-8") as f:
+        if new:
+            f.write("# Asset credits\n\nProvenance for everything pulled into this vault. "
+                    "**`CC0` needs no attribution** (listed for record); **`CC-BY` and similar "
+                    "REQUIRE the credit shown** — keep this file with your build.\n\n")
+        f.write("- **%s** — %s · `%s` · %s %s\n" % (name, author, lic, url, marker))
+        if attribution:
+            f.write("    > %s\n" % attribution)
+
+
 # ------------------------------------------------------------- resolution ----
 def _fetch_text(url, timeout=20):
     req = urllib.request.Request(url, headers=UA)
@@ -131,6 +151,7 @@ def download(a):
         with open(fn, "wb") as f:
             f.write(blob)
         n = 1
+    append_credit(a["id"], a["name"], a["author"], a["license"], r.get("page") or a.get("page", ""))
     return True, {"path": d, "files": n, "bytes": len(blob)}
 
 
@@ -188,6 +209,7 @@ button.done{background:#10331f;color:#52e08a}
  <div class=bar id=ppbar style="display:none;margin-top:8px">
   <input id=ppq placeholder="🍕 Poly Pizza — live search 1000s of low-poly models, then ⬇ to your vault (Enter)" onkeydown="if(event.key==='Enter')ppSearch()">
   <span class=chip onclick="ppSearch()">Search</span>
+  <span class=chip id=ppcc0 onclick="toggleCC0()">CC0 only</span>
   <span class=chip id=ppclear style="display:none" onclick="clearPP()">✕ back to vault</span>
   <span id=ppstatus class=out style="margin:0 0 0 4px"></span>
  </div>
@@ -195,7 +217,7 @@ button.done{background:#10331f;color:#52e08a}
 </header>
 <div class=grid id=grid></div>
 <script>
-let assets=[],ft='all',q='',lpOnly=true,ppMode=false,ppItems=[];
+let assets=[],ft='all',q='',lpOnly=true,ppMode=false,ppItems=[],ppCC0=false;
 async function load(){const d=await(await fetch('/api/catalog')).json();
  assets=d.assets;out.textContent=d.out;count.textContent=assets.length;
  document.querySelector('.chip[data-t=all]').classList.add('on');
@@ -238,9 +260,11 @@ async function ppSearch(){
   renderPP();}
  catch(e){ppstatus.textContent=''+e;}}
 function clearPP(){ppMode=false;ppclear.style.display='none';ppstatus.textContent='';render();}
+function toggleCC0(){ppCC0=!ppCC0;ppcc0.classList.toggle('on',ppCC0);if(ppMode)renderPP();}
 function renderPP(){
- shown.textContent=ppItems.length;
- grid.innerHTML=ppItems.map(ppCard).join('');}
+ const items=ppItems.filter(r=>!ppCC0||(r.license||'').startsWith('CC0'));
+ shown.textContent=items.length;
+ grid.innerHTML=items.map(ppCard).join('');}
 function ppCard(r){
  const b=(r.license||'').startsWith('CC0')?'cc0':'free';
  const an=r.animated?' · 🦴 rigged':'';
@@ -252,7 +276,8 @@ function ppCard(r){
     <button onclick='ppGrab(${JSON.stringify(r)},this)'>⬇ Add</button></div>
   </div></div>`;}
 async function ppGrab(r,btn){btn.disabled=true;btn.textContent='…';
- try{const u='/api/ppget?id='+encodeURIComponent(r.id)+'&name='+encodeURIComponent(r.name)+'&url='+encodeURIComponent(r.download);
+ try{const u='/api/ppget?id='+encodeURIComponent(r.id)+'&name='+encodeURIComponent(r.name)+'&url='+encodeURIComponent(r.download)
+   +'&lic='+encodeURIComponent(r.license||'')+'&by='+encodeURIComponent(r.author||'')+'&attr='+encodeURIComponent(r.attribution||'');
   const d=await(await fetch(u)).json();
   if(d.ok){btn.textContent='✓ In vault';btn.classList.add('done');}
   else{alert(d.reason||'failed');btn.textContent='⬇ Add';btn.disabled=false;}}
@@ -306,6 +331,7 @@ class Handler(BaseHTTPRequestHandler):
                     out.append({"id": r["ID"], "name": r["Title"], "thumb": r["Thumbnail"],
                                 "download": r["Download"], "license": r.get("Licence", "?"),
                                 "author": (r.get("Creator") or {}).get("Username", "?"),
+                                "attribution": r.get("Attribution", ""),
                                 "tris": r.get("Tri Count"), "animated": r.get("Animated")})
                 return self._send(200, "application/json",
                                   json.dumps({"ok": True, "total": data.get("total"), "results": out}))
@@ -315,6 +341,9 @@ class Handler(BaseHTTPRequestHandler):
             url = qs.get("url", [""])[0]
             pid = qs.get("id", [""])[0]
             name = qs.get("name", ["model"])[0]
+            lic = qs.get("lic", ["?"])[0]
+            by = qs.get("by", ["?"])[0]
+            attr = qs.get("attr", [""])[0]
             if not url.startswith("https://static.poly.pizza/"):
                 return self._send(400, "application/json", json.dumps({"ok": False, "reason": "bad host"}))
             try:
@@ -324,6 +353,7 @@ class Handler(BaseHTTPRequestHandler):
                 safe = (re.sub(r"[^A-Za-z0-9_.-]", "_", name)[:40] or "model")
                 with open(os.path.join(d, safe + ".glb"), "wb") as f:
                     f.write(blob)
+                append_credit("pp-" + pid, name, by, lic, "https://poly.pizza/m/" + pid, attr)
                 return self._send(200, "application/json",
                                   json.dumps({"ok": True, "info": {"path": d, "bytes": len(blob)}}))
             except Exception as e:
