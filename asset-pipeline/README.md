@@ -25,7 +25,7 @@ No dependencies. It's a knowledge skill — it tells Claude *where* to get asset
 | `SKILL.md` | The 5-step pipeline (library-first → hand hero → AI-where-matured → cleanup → import), the honest **2D-vs-3D AI asymmetry** table, and the **free-first / `$`-flagged / ask-before-paid** discipline. |
 | `references/sources-2d.md` | 2D sources: free libs (Kenney `CC0`, itch.io, OpenGameArt), hand-draw (Aseprite + `pixel-pipeline`), and AI pixel **paid specialists only** (PixelLab, RetroDiffusion, Sprite AI) with the free-local-SDXL trap spelled out. Import via Aseprite Wizard. |
 | `references/sources-3d.md` | 3D sources: CC0 libs (Kenney, Quaternius, Poly Haven), paid (Synty POLYGON `$`, Fab/Megascans), AI image→3D (Tripo, Meshy, TRELLIS, Hunyuan3D) with the Blender-cleanup caveat, then the Blender → `.glb` → Godot import path. |
-| `vault/vault.py` + `vault/catalog.json` | **The bundled asset vault** — a stdlib browser UI to filter, preview, select, and download CC0 packs straight into your project. 140 license-verified entries (Kenney ×67, ambientCG ×25, Poly Haven + 9 HDRIs, Quaternius low-poly nature, Synty, music portals), weighted for a top-down pixel game. |
+| `vault/vault.py` + `vault/catalog.json` | **The bundled asset vault** — a stdlib browser UI to filter, preview, select, and download CC0 packs straight into your project. 147 license-verified entries — non-Kenney (80: KayKit, Quaternius, Synty, Poly Pizza, Poly Haven, ambientCG) now outnumber Kenney (67), weighted for a top-down pixel game. |
 
 ## The asset vault (bundled tool)
 
