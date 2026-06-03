@@ -42,6 +42,8 @@ Shipping a Godot game fast is mostly two moves. Reach for these *before* hand-wr
 
 **2. Collapse the iterate→feel loop.** Feel is tuned, not designed — so make tuning cost seconds. Expose every feel number as `@export_range`, run from the editor, and edit values **live via the Remote scene-tree inspector** while the game runs. Drop-in debug HUD, hitbox visualizer, and the headless self-reporting verify recipe are in **`references/playtest-harness.md`**.
 
+**3. Assemble, don't write.** Day-1 project setup (pixel-perfect settings, the `Events` global signal bus, autoloads, layers, folder layout) is paste-ready in **`references/scaffold.md`** — empty folder to running in minutes. The recurring systems (versioned save/load, scene transitions, interaction, spawner) are drop-in scaffolds in **`references/systems-library.md`** — adjust, don't research. The `Events` bus is the backbone: systems talk through signals, never hard references, so a solo project doesn't rot into spaghetti as it grows.
+
 ## Match the project's conventions
 
 Before writing, read `project.godot` + an existing script to match style. For **pirate-arpg** specifically (from its docs):
@@ -105,6 +107,8 @@ Make verification a real assertion, not "it didn't crash": build a tiny `_test` 
 
 - `references/ecosystem.md` — **which Godot plugin to wrap** per problem (camera, AI, dialogue, save, tests, Aseprite) + the minimal-set discipline
 - `references/playtest-harness.md` — **tune feel in seconds**: live Remote-inspector tuning, debug HUD, hitbox visualizer, headless self-reporting verify recipe
+- `references/scaffold.md` — **empty folder → running fast**: paste-ready `project.godot` blocks, folder layout, the `Events` global signal bus, new-feature checklist
+- `references/systems-library.md` — **drop-in systems**: versioned save/load, scene-transition router, interaction ("press E"), enemy spawner
 - `references/game-feel.md` — full GDScript for hit-pause, shake, knockback, hurt flash, damage popup, squash/stretch
 - `references/combat-components.md` — Hitbox/Hurtbox/Health component scripts + how to wire them
 - `references/gdscript-patterns.md` — state machine, signals, Resources, common Godot-4 gotchas
