@@ -57,10 +57,11 @@ python3 vault/vault.py list --type 2d # CLI listing
 python3 vault/vault.py get kenney-tiny-dungeon            # CLI fetch one pack
 ```
 
-- Backed by `vault/catalog.json` — **74** license-verified CC0 entries (Kenney, Poly Haven, ambientCG, Quaternius), weighted for a top-down pixel game.
-- **Kenney** (50 packs) download as a self-contained zip and unzip straight into `asset-vault/<type>/<id>/` (the zip URL is resolved live from the page, so it never goes stale).
-- **ambientCG** (CC0 PBR materials) download as a 1K-JPG zip — and ship a Godot `.tres` material, so they drop straight in.
-- **Poly Haven** shows live thumbnails + opens the page (multi-file material/model sets — pick your format there).
+- Backed by `vault/catalog.json` — **98** license-verified CC0 entries (Kenney ×55, ambientCG ×17, Poly Haven models + HDRIs, music portals), weighted for a top-down pixel game.
+- **Kenney** (55 packs) download as a self-contained zip and unzip straight into `asset-vault/<type>/<id>/` (the zip URL is resolved live from the page, so it never goes stale).
+- **ambientCG** (17 CC0 PBR materials) download as a 1K-JPG zip — and ship a Godot `.tres` material, so they drop straight in.
+- **Poly Haven HDRIs** (5) download as a single `.hdr` (3D lighting); **Poly Haven models** show live thumbnails + open the page (multi-file sets).
+- Audio: Kenney SFX/voice + **music portals** (FreePD `CC0`, Sonniss, Incompetech) for soundtracks.
 - Filter by type (2D/3D/audio/UI), search by tag, `CC0` badges, "Add to vault" / "Open page" per card.
 - To add an asset: append an entry to `catalog.json` (`source: "kenney"` with a verified slug, or `"polyhaven"`/`"link"`). Verify a Kenney slug first: `curl -sI https://kenney.nl/assets/<slug>`.
 

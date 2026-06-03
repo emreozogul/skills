@@ -83,6 +83,15 @@ def resolve(a):
                             "ambientCG-Web/media/thumbnail/128-PNG/%s.png" % ref)
             # 1K-JPG zip is a self-contained PBR set; the get? URL 302s to the file.
             out["download"] = "https://ambientcg.com/get?file=%s_1K-JPG.zip" % ref
+        elif src == "polyhaven_hdri":
+            ref = a["ref"]
+            out["page"] = "https://polyhaven.com/a/%s" % ref
+            out["thumb"] = "https://cdn.polyhaven.com/asset_img/thumbs/%s.png?width=256" % ref
+            # HDRIs are a single .hdr file → directly downloadable. Resolve 2k via API.
+            files = json.loads(_fetch_text("https://api.polyhaven.com/files/%s" % ref))
+            h = files.get("hdri", {})
+            res = h.get("2k") or (list(h.values())[0] if h else {})
+            out["download"] = res.get("hdr", {}).get("url")
     except Exception as e:
         sys.stderr.write("[resolve] %s: %s\n" % (a["id"], e))
     _resolved[a["id"]] = out
@@ -219,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
             items = []
             for a in load_assets():
                 items.append({**a, "page": resolve(a)["page"] if a["source"] != "link" else a.get("page"),
-                              "downloadable": a["source"] in ("kenney", "ambientcg"),
+                              "downloadable": a["source"] in ("kenney", "ambientcg", "polyhaven_hdri"),
                               "in_vault": in_vault(a)})
             return self._send(200, "application/json",
                               json.dumps({"assets": items, "out": OUT}))

@@ -80,6 +80,35 @@
     { "id": "acg-Bricks104", "name": "Bricks 104 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","brick","wall"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Bricks104" },
     { "id": "acg-Rock064", "name": "Rock 064 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","rock","stone","cliff"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Rock064" },
     { "id": "acg-Gravel043", "name": "Gravel 043 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","gravel","ground","path"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Gravel043" },
-    { "id": "acg-Metal049A", "name": "Metal 049A (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","metal","iron"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Metal049A" }
+    { "id": "acg-Metal049A", "name": "Metal 049A (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","metal","iron"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Metal049A" },
+
+    { "id": "acg-Planks037A", "name": "Planks 037A (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","wood","planks","deck","ship"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Planks037A" },
+    { "id": "acg-Fabric061", "name": "Fabric 061 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","fabric","cloth","sail"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Fabric061" },
+    { "id": "acg-Fabric066", "name": "Fabric 066 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","fabric","cloth","sail"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Fabric066" },
+    { "id": "acg-Ground037", "name": "Ground 037 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","ground","path","dirt"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Ground037" },
+    { "id": "acg-Ground054", "name": "Ground 054 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","ground","forest","leaves"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Ground054" },
+    { "id": "acg-Tiles107", "name": "Tiles 107 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","tiles","floor"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Tiles107" },
+    { "id": "acg-Tiles138", "name": "Tiles 138 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","tiles","floor","stone"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Tiles138" },
+    { "id": "acg-Plaster001", "name": "Plaster 001 (texture)", "type": "3d", "category": "material", "tags": ["pbr","texture","plaster","wall"], "author": "ambientCG", "license": "CC0", "source": "ambientcg", "ref": "Plaster001" },
+
+    { "id": "ph-hdri-qwantani_noon", "name": "Qwantani Noon (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","sky","outdoor","noon"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "qwantani_noon" },
+    { "id": "ph-hdri-autumn_field", "name": "Autumn Field (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","sky","field","outdoor"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "autumn_field" },
+    { "id": "ph-hdri-belfast_sunset", "name": "Belfast Sunset (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","sunset","sky","warm"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "belfast_sunset" },
+    { "id": "ph-hdri-bambanani_sunset", "name": "Bambanani Sunset (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","sunset","dusk"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "bambanani_sunset" },
+    { "id": "ph-hdri-beach_parking", "name": "Beach Parking (HDRI)", "type": "3d", "category": "hdri", "tags": ["hdri","lighting","beach","coast","sea"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven_hdri", "ref": "beach_parking" },
+
+    { "id": "ph-WoodenTable_02", "name": "Wooden Table 02", "type": "3d", "category": "props", "tags": ["3d","pbr","furniture","table"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "WoodenTable_02" },
+    { "id": "ph-CoffeeTable_01", "name": "Coffee Table 01", "type": "3d", "category": "props", "tags": ["3d","pbr","furniture","table"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "CoffeeTable_01" },
+    { "id": "ph-Rockingchair_01", "name": "Rocking Chair 01", "type": "3d", "category": "props", "tags": ["3d","pbr","furniture","chair"], "author": "Poly Haven", "license": "CC0", "source": "polyhaven", "ref": "Rockingchair_01" },
+
+    { "id": "kenney-fantasy-ui-borders", "name": "Fantasy UI Borders", "type": "ui", "category": "ui", "tags": ["ui","fantasy","rpg","border","frame"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "fantasy-ui-borders" },
+    { "id": "kenney-map-pack", "name": "Map Pack", "type": "2d", "category": "tileset", "tags": ["topdown","map","tileset","pixel"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "map-pack" },
+    { "id": "kenney-sokoban", "name": "Sokoban", "type": "2d", "category": "tileset", "tags": ["topdown","puzzle","crate","tileset"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "sokoban" },
+    { "id": "kenney-physics-assets", "name": "Physics Assets", "type": "2d", "category": "sprites", "tags": ["physics","props","wood","pixel"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "physics-assets" },
+    { "id": "kenney-shooting-gallery", "name": "Shooting Gallery", "type": "2d", "category": "sprites", "tags": ["targets","props","pixel"], "author": "Kenney", "license": "CC0", "source": "kenney", "ref": "shooting-gallery" },
+
+    { "id": "freepd-music", "name": "FreePD — CC0 music (browse)", "type": "audio", "category": "portal", "tags": ["portal","music","cc0","soundtrack"], "author": "FreePD", "license": "CC0", "source": "link", "page": "https://freepd.com/" },
+    { "id": "sonniss-sfx", "name": "Sonniss GDC — free SFX (browse)", "type": "audio", "category": "portal", "tags": ["portal","sfx","royalty-free","library"], "author": "Sonniss", "license": "free*", "source": "link", "page": "https://sonniss.com/gameaudiogdc" },
+    { "id": "incompetech-music", "name": "Incompetech — royalty-free music (browse)", "type": "audio", "category": "portal", "tags": ["portal","music","cc-by"], "author": "Incompetech", "license": "free*", "source": "link", "page": "https://incompetech.com/music/royalty-free/" }
   ]
 }
