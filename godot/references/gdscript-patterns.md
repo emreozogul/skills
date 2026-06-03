@@ -91,3 +91,30 @@ Author instances as `.tres` in `data/weapons/`. Swap weapons by swapping the Res
 ## Running & verifying
 
 `mcp__godot__run_project { projectPath }` runs it and captures output. Read stdout for script errors (parse errors print there). For feel, you must watch it — re-run after tuning numbers.
+
+Verification loop with the MCP (this exact sequence works headless):
+```
+mcp__godot__run_project { projectPath, scene: "res://scenes/_x.tscn" }
+# sleep ~3s if the scene auto-runs a scripted check
+mcp__godot__get_debug_output     # → { output: [...stdout...], errors: [...] }
+mcp__godot__stop_project
+```
+Pass condition: `errors: []` **and** your expected prints in `output`. Build a tiny test scene that auto-fires the behavior and prints what happened (e.g. `[test] dummy took 6 dmg`) — a self-reporting scene turns a headless run into a real assertion, not just "it didn't crash."
+
+## ⚠️ The two gotchas that will eat your time (learned live)
+
+**1. New `class_name` scripts aren't visible to a headless run until the class cache is rebuilt.** Add `class_name Hitbox`, reference `Hitbox` from another script, `run_project` → `Parser Error: Could not find type "Hitbox" in the current scope`. The global class registry (`.godot/global_script_class_cache.cfg`) is only refreshed by an **editor scan**, which `run_project` does *not* trigger. Fix — run once after adding any new `class_name`:
+```bash
+"/Applications/Godot.app/Contents/MacOS/Godot" --headless --editor --quit --path <project>
+# prints "update_scripts_classes | Hitbox …" then quits; now run_project resolves the types
+```
+(A script *body* edit needs no rescan — only adding/renaming a `class_name`.) Symptom is always a type that clearly exists but "can't be found."
+
+**2. Hand-authored `.tscn` node-exports (`@export var x: SomeNode`) don't reliably resolve from a written `health = NodePath("../Health")`.** The hit connects but the reference is null at runtime. Don't depend on it when writing `.tscn` by hand — **self-wire in `_ready`** instead:
+```gdscript
+@export var health: Health
+func _ready() -> void:
+    if health == null:
+        health = get_parent().get_node_or_null("Health")  # robust regardless of the .tscn
+```
+This makes components drop-in (Hurtbox next to Health just works) and survives both editor-wired and hand-written scenes.

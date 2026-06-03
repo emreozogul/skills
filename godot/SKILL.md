@@ -77,6 +77,14 @@ Do NOT build crew/ship/procedural-island systems until this loop is fun. (The ro
 
 After any behavior/feel change: `mcp__godot__run_project` and observe. Game feel cannot be reasoned about on paper — it's felt at runtime. If you can't run it, say so; don't assert it feels good.
 
+Make verification a real assertion, not "it didn't crash": build a tiny `_test` scene that auto-fires the behavior and **prints what happened** (e.g. `[test] dummy took 6 dmg`), then `run_project` → `get_debug_output` → pass only on `errors: []` **plus** the expected prints.
+
+**Before the first headless run after adding any new `class_name` script, rebuild the class cache** or you'll get a bogus `Could not find type "X" in the current scope`:
+```bash
+"/Applications/Godot.app/Contents/MacOS/Godot" --headless --editor --quit --path <project>
+```
+`run_project` does **not** refresh `.godot/global_script_class_cache.cfg`; only an editor scan does. (Script-body edits need no rescan — only new/renamed `class_name`.) See `references/gdscript-patterns.md` → "the two gotchas." The other one: hand-written `.tscn` node-exports don't reliably resolve — **self-wire components in `_ready`**.
+
 ## See also
 
 - `references/game-feel.md` — full GDScript for hit-pause, shake, knockback, hurt flash, damage popup, squash/stretch

@@ -46,8 +46,15 @@ func heal(amount: int) -> void:
 ```gdscript
 class_name Hurtbox
 extends Area2D
-## Add as child with a CollisionShape2D. Point `health` at the entity's Health node.
+## Add as child with a CollisionShape2D. `health` auto-wires to a sibling
+## node named "Health" — don't rely on a hand-written .tscn NodePath export,
+## it doesn't reliably resolve (see gdscript-patterns.md → gotcha #2).
 @export var health: Health
+
+func _ready() -> void:
+	if health == null:
+		health = get_parent().get_node_or_null("Health")
+
 ## Called by an attacking Hitbox.
 func receive_hit(damage: int, source_pos: Vector2) -> void:
 	if health:
