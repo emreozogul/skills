@@ -76,6 +76,13 @@ def resolve(a):
             out["thumb"] = "https://cdn.polyhaven.com/asset_img/thumbs/%s.png?width=256" % ref
             # Poly Haven model/texture sets are multi-file → open page to pick format.
             out["download"] = None
+        elif src == "ambientcg":
+            ref = a["ref"]
+            out["page"] = "https://ambientcg.com/view?id=%s" % ref
+            out["thumb"] = ("https://acg-media.struffelproductions.com/file/"
+                            "ambientCG-Web/media/thumbnail/128-PNG/%s.png" % ref)
+            # 1K-JPG zip is a self-contained PBR set; the get? URL 302s to the file.
+            out["download"] = "https://ambientcg.com/get?file=%s_1K-JPG.zip" % ref
     except Exception as e:
         sys.stderr.write("[resolve] %s: %s\n" % (a["id"], e))
     _resolved[a["id"]] = out
@@ -212,7 +219,7 @@ class Handler(BaseHTTPRequestHandler):
             items = []
             for a in load_assets():
                 items.append({**a, "page": resolve(a)["page"] if a["source"] != "link" else a.get("page"),
-                              "downloadable": a["source"] == "kenney",
+                              "downloadable": a["source"] in ("kenney", "ambientcg"),
                               "in_vault": in_vault(a)})
             return self._send(200, "application/json",
                               json.dumps({"assets": items, "out": OUT}))
