@@ -52,6 +52,18 @@ Pure markdown — single sources inline, multi-source via Workflow fan-out. The 
 
 ---
 
+### [`scholar/`](./scholar) — Search academic papers + fetch the legal open-access PDF
+
+Find research papers, read abstracts + citation counts, grab the **legal** open-access PDF when one exists, and get a BibTeX bibliography — from one stdlib tool (browser UI + CLI). Backed by **OpenAlex** (250M+ works, no API key) for search/metadata/citations/abstracts/OA links.
+
+Built on an honest stance: **no Sci-Hub.** It pirates paywalled PDFs *and* is worse for search (no metadata/citations/abstracts). The legal open-access stack (OpenAlex, arXiv, Unpaywall) is lawful and richer — ~50% of recent papers have a free copy; for the rest you get the abstract + DOI + your library. Feeds the research family: `distill` (break a paper down), `insight-vault` (save findings), `full-research`/`deep-research` (cite real sources).
+
+**Use when:** "find papers on X", "what's the research on Y", "is there a study on Z", "get me a citation/BibTeX/PDF for <paper>", or any claim that wants a scholarly source.
+
+[Read more →](./scholar/SKILL.md)
+
+---
+
 ### [`insight-vault/`](./insight-vault) — Personal knowledge library (capture / retrieve / evaluate)
 
 Turns text, files, URLs, or research output into atomic, provenance-backed insight files, keeps a rebuildable SQLite FTS5 index over them, and evaluates positions against your own library (supports / contradicts / qualifies + knowledge gaps). Stdlib-only Python engine bundled with the skill — no third-party packages.
@@ -193,6 +205,7 @@ chmod +x ~/.claude/skills/dogfood-router/dogfood-router.sh
 cp -r skills/pixel-pipeline ~/.claude/skills/
 cp -r skills/godot ~/.claude/skills/
 cp -r skills/asset-pipeline ~/.claude/skills/
+cp -r skills/scholar ~/.claude/skills/
 ```
 
 After copying `dogfood-router`, wire it into your `~/.claude/settings.json` to activate (see [dogfood-router/README.md](./dogfood-router/README.md) for the JSON snippet).
@@ -237,6 +250,7 @@ skh                               # skill hygiene audit
 | `pixel-pipeline` | Rust 1.70+ (for the `pix` CLI). Aseprite + `aseprite-mcp-pro` MCP recommended for full workflow. |
 | `godot` | Godot 4.x. The `godot` MCP connected (for scene construction + `run_project` verification); degrades to writing `.gd`/`.tscn` files directly without it. No Rust needed. |
 | `asset-pipeline` | `python3` for the bundled asset-vault UI (stdlib only — no pip installs). Composes with `pixel-pipeline` (2D processing) and `godot` (import). Blender recommended for 3D cleanup; paid tools (Synty, PixelLab, Meshy) optional and flagged. |
+| `scholar` | `python3` for the bundled `scholar.py` (stdlib only — no pip installs, no API key). Uses OpenAlex's free API. Optional `SCHOLAR_EMAIL` for the polite pool / Unpaywall. |
 
 ## Design principles
 

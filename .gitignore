@@ -29,3 +29,9 @@ asset-vault/
 .pp_key
 **/.pp_key
 *.pp_key
+
+# scholar — optional email + downloaded papers (not source)
+.email
+**/.email
+papers/
+**/papers/
