@@ -2,7 +2,7 @@
 
 A collection of Claude Code skills built for real workflows — **my own**, each self-contained and installable below.
 
-> Using **external** skills/plugins too (superpowers, deep-research, frontend-design, 10x-team, Unity MCP, …)? Those aren't mine to redistribute — but [**EXTERNAL_SKILLS.md**](./EXTERNAL_SKILLS.md) lists every marketplace + plugin I use with the exact `/plugin` install commands, so anyone can reproduce the full setup.
+> Using **external** skills/plugins too (superpowers, deep-research, frontend-design, 10x-team, …)? Those aren't mine to redistribute — but [**EXTERNAL_SKILLS.md**](./EXTERNAL_SKILLS.md) lists every marketplace + plugin I use with the exact `/plugin` install commands. And [**MCPS.md**](./MCPS.md) lists the **best MCP server per tool** (Godot, Unity, Blender, Aseprite — deduped, one each) with install commands. So anyone can reproduce the full setup.
 
 ## Skills in this repo
 
